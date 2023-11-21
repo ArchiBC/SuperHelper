@@ -13,7 +13,7 @@ using System.Windows.Forms.Integration;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
-using System.Web.Script.Serialization;
+using System.Text.Json;
 
 namespace SuperHelper
 {
@@ -326,8 +326,7 @@ namespace SuperHelper
             }
 
             MenuReplacer.SaveUrlExToJson();
-            JavaScriptSerializer ser = new JavaScriptSerializer();
-            File.WriteAllText(LocationEX, ser.Serialize(MenuReplacer.UrlExDict));
+            File.WriteAllText(LocationEX, JsonSerializer.Serialize(MenuReplacer.UrlExDict));
         }
 
         private string ObjectNameToDirectory(string str)

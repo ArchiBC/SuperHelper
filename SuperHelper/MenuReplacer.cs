@@ -5,7 +5,6 @@ using Rhino.Geometry;
 using System;
 using System.Linq;
 using System.IO;
-using System.Web.Script.Serialization;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -15,6 +14,7 @@ using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
 using System.Text;
 using Rhino.Commands;
+using System.Text.Json;
 
 namespace SuperHelper
 {
@@ -60,20 +60,17 @@ namespace SuperHelper
 
         internal static void SaveUrlDictToJson()
         {
-            JavaScriptSerializer ser = new JavaScriptSerializer();
-            File.WriteAllText(_location, ser.Serialize(UrlDict));
+            File.WriteAllText(_location, JsonSerializer.Serialize(UrlDict));
         }
 
         internal static void SaveUrlExToJson()
         {
-            JavaScriptSerializer ser = new JavaScriptSerializer();
-            File.WriteAllText(_locationEx, ser.Serialize(UrlExDict));
+            File.WriteAllText(_locationEx, JsonSerializer.Serialize(UrlExDict));
         }
 
         public static bool Init()
         {
             new HighLightConduit().Enabled = true;
-            JavaScriptSerializer ser = new JavaScriptSerializer();
             var client =  new System.Net.WebClient();
 
             //Read from json.
@@ -89,7 +86,7 @@ namespace SuperHelper
                     try
                     {
                         var bytes = client.DownloadData(@"https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urls.json");
-                        UrlDict = ser.Deserialize<Dictionary<string, string>>(Encoding.UTF8.GetString(bytes));
+                        UrlDict = JsonSerializer.Deserialize<Dictionary<string, string>>(Encoding.UTF8.GetString(bytes));
                     }
                     catch
                     {
@@ -99,7 +96,7 @@ namespace SuperHelper
                     try
                     {
                         var bytes = client.DownloadData(@"https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urlex.json");
-                        UrlExDict = ser.Deserialize<Dictionary<string, string[]>>(Encoding.UTF8.GetString(bytes));
+                        UrlExDict = JsonSerializer.Deserialize<Dictionary<string, string[]>>(Encoding.UTF8.GetString(bytes));
                     }
                     catch
                     {
@@ -111,7 +108,7 @@ namespace SuperHelper
                 if (File.Exists(_location))
                 {
                     string jsonStr = File.ReadAllText(_location);
-                    foreach (var pair in ser.Deserialize<Dictionary<string, string>>(jsonStr))
+                    foreach (var pair in JsonSerializer.Deserialize<Dictionary<string, string>>(jsonStr))
                     {
                         UrlDict[pair.Key] = pair.Value;
                     }
@@ -121,7 +118,7 @@ namespace SuperHelper
                 if (File.Exists(_locationEx))
                 {
                     string jsonStr = File.ReadAllText(_locationEx);
-                    foreach (var pair in ser.Deserialize<Dictionary<string, string[]>>(jsonStr))
+                    foreach (var pair in JsonSerializer.Deserialize<Dictionary<string, string[]>>(jsonStr))
                     {
                         if(UrlExDict.TryGetValue(pair.Key, out var values))
                         {
