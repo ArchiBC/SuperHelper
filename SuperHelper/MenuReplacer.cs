@@ -205,7 +205,7 @@ namespace SuperHelper
 
         private void Menu_ObjectHelpClickNew(object sender, EventArgs e)
         {
-            SuperHelperAssemblyPriority.Show();
+            SimpleAssemblyPriority.Show();
             SetOneObject(this);
         }
 

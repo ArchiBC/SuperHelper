@@ -183,12 +183,12 @@ namespace SuperHelper
 
         private void SwitchSide_Click(object sender, RoutedEventArgs e)
         {
-            SuperHelperAssemblyPriority.SwitchSide();
+            SimpleAssemblyPriority.SwitchSide();
         }
 
         private void Close_Click(object sender, RoutedEventArgs e)
         {
-            SuperHelperAssemblyPriority.Hide();
+            SimpleAssemblyPriority.Hide();
         }
 
         public void UpdateViewPortHost()
