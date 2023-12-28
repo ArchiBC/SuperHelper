@@ -18,7 +18,9 @@ public static partial class SuperSetting
         OnOpenChanged += (value) =>
         {
             if (value) 
-                SimpleAssemblyPriority.Show(); 
+                SimpleAssemblyPriority.Show();
+            else
+                SimpleAssemblyPriority.Hide();
         };
     }
 }

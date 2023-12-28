@@ -189,6 +189,7 @@ namespace SuperHelper
         private void Close_Click(object sender, RoutedEventArgs e)
         {
             SimpleAssemblyPriority.Hide();
+            SuperSetting.Open = false;
         }
 
         public void UpdateViewPortHost()
