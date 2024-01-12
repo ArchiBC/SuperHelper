@@ -1,27 +1,18 @@
 ﻿using GH_IO.Serialization;
+using Grasshopper;
+using Grasshopper.GUI;
+using Grasshopper.GUI.Canvas;
+using Grasshopper.GUI.Canvas.Interaction;
 using Grasshopper.Kernel;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.ComponentModel;
 using System.Drawing;
 using System.IO;
-using System.Windows.Controls;
-using Grasshopper.GUI.Canvas.Interaction;
-using Grasshopper.GUI.Canvas;
-using Grasshopper.GUI;
-using Grasshopper.Kernel.Special;
-using Rhino.Runtime;
+using System.Linq;
 using System.Reflection;
-using Grasshopper;
-using System.Windows.Shapes;
-using System.ComponentModel;
-using Grasshopper.Kernel.Data;
+using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Runtime;
-using System.Drawing.Imaging;
-using System.Drawing.Drawing2D;
 
 namespace SuperHelper
 {
@@ -522,7 +513,7 @@ namespace SuperHelper
             {
                 try
                 {
-                    bytes = new System.Net.WebClient().DownloadData(path);
+                    bytes = new System.Net.Http.HttpClient().GetByteArrayAsync(path).Result;
                 }
                 catch
                 {

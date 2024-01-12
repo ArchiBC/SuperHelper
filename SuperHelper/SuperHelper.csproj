@@ -1,17 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net7.0-windows</TargetFramework>
-    <Version>1.1.7</Version>
+    <Version>2.0.0</Version>
     <Title>SuperHelper</Title>
     <Description>Much better help window for grasshoopper</Description>
     <TargetExt>.gha</TargetExt>
     <UseWpf>true</UseWpf>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Authors>秋水</Authors>
+    <Authors>ArchiBC</Authors>
     <PackageIcon>SuperHelperIcon_128.png</PackageIcon>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 	<UseWindowsForms>true</UseWindowsForms>
 	<IsPublishable>True</IsPublishable>
+	  <CopyLocalLockFileAssemblies>True</CopyLocalLockFileAssemblies>
+	  <NoWarn>NU1701</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="AlipayImage.jpg" />
@@ -47,8 +49,6 @@
   </Target>
   <ItemGroup>
     <PackageReference Include="Grasshopper" Version="8.2.23346.13001" />
-    <PackageReference Include="Microsoft.AspNetCore.SystemWebAdapters" Version="1.3.0" />
-    <PackageReference Include="Microsoft.Windows.Compatibility" Version="8.0.1" />
-    <PackageReference Include="SimpleGrasshopper" Version="1.3.9" />
+    <PackageReference Include="SimpleGrasshopper" Version="1.3.10" />
   </ItemGroup>
 </Project>

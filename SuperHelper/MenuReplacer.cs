@@ -1,7 +1,5 @@
 using Grasshopper;
-using Grasshopper.GUI.HTML;
 using Grasshopper.Kernel;
-using Rhino.Geometry;
 using System;
 using System.Linq;
 using System.IO;
@@ -11,9 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Collections.ObjectModel;
-using System.Runtime.InteropServices;
 using System.Text;
-using Rhino.Commands;
 using System.Text.Json;
 
 namespace SuperHelper
@@ -71,7 +67,7 @@ namespace SuperHelper
         public static bool Init()
         {
             new HighLightConduit().Enabled = true;
-            var client =  new System.Net.WebClient();
+            var client =  new System.Net.Http.HttpClient();
 
             //Read from json.
             try
@@ -85,7 +81,7 @@ namespace SuperHelper
                     LastDownloadURLTime = now;
                     try
                     {
-                        var bytes = client.DownloadData(@"https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urls.json");
+                        var bytes = client.GetByteArrayAsync(@"https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urls.json").Result;
                         UrlDict = JsonSerializer.Deserialize<Dictionary<string, string>>(Encoding.UTF8.GetString(bytes));
                     }
                     catch
@@ -95,7 +91,7 @@ namespace SuperHelper
 
                     try
                     {
-                        var bytes = client.DownloadData(@"https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urlex.json");
+                        var bytes = client.GetByteArrayAsync(@"https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urlex.json").Result;
                         UrlExDict = JsonSerializer.Deserialize<Dictionary<string, string[]>>(Encoding.UTF8.GetString(bytes));
                     }
                     catch

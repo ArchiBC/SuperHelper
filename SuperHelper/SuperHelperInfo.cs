@@ -1,23 +1,12 @@
 ﻿using Grasshopper;
 using Grasshopper.GUI;
-using Grasshopper.GUI.Canvas;
 using Grasshopper.Kernel;
-using Rhino.Display;
 using System;
-using System.Linq;
-using System.Reflection;
 using System.Drawing;
-using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Forms.Integration;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
-using SimpleGrasshopper.Attributes;
-using Eto.Forms;
 using Cursors = System.Windows.Forms.Cursors;
-using MessageBox = System.Windows.Forms.MessageBox;
 
 namespace SuperHelper;
 
