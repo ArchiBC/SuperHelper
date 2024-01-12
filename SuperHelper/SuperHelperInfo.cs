@@ -23,23 +23,23 @@ namespace SuperHelper;
 
 public class SuperHelperInfo : GH_AssemblyInfo
 {
-    public override string Name => "SuperHelper";
+    public override string Name => "SuperHelper R8";
 
     //Return a 24x24 pixel bitmap to represent this GHA library.
     public override Bitmap Icon => Properties.Resources.SuperHelperIcon_24;
 
     //Return a short string describing the purpose of this GHA library.
-    public override string Description => "Much better helper control for grasshopper!";
+    public override string Description => "Much better helper control for grasshopper! The original author is 秋水";
 
     public override Guid Id => new Guid("A71D5B0A-9D5B-4E27-8933-BB83CB68066D");
 
     //Return a string identifying you or your company.
-    public override string AuthorName => "秋水";
+    public override string AuthorName => "ArchiBC";
 
     //Return a string representing your preferred contact details.
-    public override string AuthorContact => "1123993881@qq.com";
+    public override string AuthorContact => "Archi-bc@outlook.com";
 
-    public override string Version => "1.1.7";
+    public override string Version => "2.0.0";
 }
 
 

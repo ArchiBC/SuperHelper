@@ -9,7 +9,7 @@ namespace SuperHelper;
 
 public static partial class SuperSetting
 {
-    [Config("SuperHelper","SuperHelper"), ToolButton("https://github.com/ArchiDog1998/SimpleGrasshopper/raw/main/assets/image-20231123225140458.png")]
+    [Config("SuperHelper","SuperHelper"), ToolButton("C:\\Users\\dell\\OneDrive\\vsProject\\SuperHelper\\SuperHelper\\Resources\\SuperHelperIcon_24.png")]
     [Setting]
     private static readonly bool open = true;
 
