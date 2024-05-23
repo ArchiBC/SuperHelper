@@ -28,7 +28,7 @@ public class SuperHelperInfo : GH_AssemblyInfo
     //Return a string representing your preferred contact details.
     public override string AuthorContact => "Archi-bc@outlook.com";
 
-    public override string Version => "2.0.1";
+    public override string Version => "2.0.2";
 }
 
 
