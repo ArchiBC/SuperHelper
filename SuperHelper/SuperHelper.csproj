@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net7.0-windows</TargetFramework>
-    <Version>2.0.1</Version>
-    <Title>SuperHelper</Title>
+    <Version>2.0.2</Version>
+    <Title>SuperHelperR8</Title>
     <Description>Much better help window for grasshoopper</Description>
     <TargetExt>.gha</TargetExt>
     <UseWpf>true</UseWpf>
