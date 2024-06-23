@@ -3,6 +3,7 @@ using Grasshopper;
 using Grasshopper.GUI;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Parameters.Hints;
+using Microsoft.Web.WebView2.Core;
 using Rhino.Display;
 using System;
 using System.Collections.Generic;
@@ -101,6 +102,7 @@ namespace SuperHelper
         public SuperHelperControl()
         {
             InitializeComponent();
+            InitializeAsync();
 
             GH_ColourPicker wirePicker = new GH_ColourPicker();
             wirePicker.Colour = WireColor;
@@ -120,6 +122,34 @@ namespace SuperHelper
 
             oldUrl.ScriptErrorsSuppressed = true;
         }
+
+        private async void InitializeAsync()
+        {
+
+            // 指定用户数据文件夹的路径
+            string userDataFolder = Grasshopper.Folders.SettingsFolder; // 请替换为实际路径
+
+            // 创建CoreWebView2Environment
+            CoreWebView2EnvironmentOptions options = new CoreWebView2EnvironmentOptions();
+            CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
+
+            // 使用指定的环境初始化WebView2
+            await myWeb.EnsureCoreWebView2Async(environment);
+
+            // 设置WebView2的初始URL
+            myWeb.Source = new Uri("http://100-gh.com/");
+
+            myWeb.CoreWebView2.NewWindowRequested += CoreWebView2_NewWindowRequested;
+
+        }
+
+        private void CoreWebView2_NewWindowRequested(object sender, CoreWebView2NewWindowRequestedEventArgs e)
+        {
+            // 将新链接在当前 WebView2 控件中打开
+            e.NewWindow = myWeb.CoreWebView2;
+            e.Handled = true; // 阻止默认的打开新窗口的行为
+        }
+
 
         public void OnClosed()
         {
@@ -142,7 +172,33 @@ namespace SuperHelper
 
         private void GoClick(object sender, RoutedEventArgs e)
         {
-            myWeb.Source = new Uri(UrlTextBox.Text);
+            // 尝试从用户输入创建Uri对象
+            if (Uri.TryCreate(UrlTextBox.Text, UriKind.Absolute, out Uri url))
+            {
+                // 如果成功，导航到该URL
+                myWeb.Source = url;
+            }
+            else
+            {
+                // 如果失败，显示错误消息或进行其他适当的错误处理
+                MessageBox.Show("输入的URL无效，请输入一个有效的URL。", "无效的URL", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void BackClick(object sender, RoutedEventArgs e)
+        {
+            if (myWeb.CanGoBack)
+            {
+                myWeb.GoBack();
+            }
+        }
+
+        private void ForwardClick(object sender, RoutedEventArgs e)
+        {
+            if (myWeb.CanGoForward)
+            {
+                myWeb.GoForward();
+            }
         }
 
         private void OpenFileClick(object sender, RoutedEventArgs e)
@@ -165,21 +221,21 @@ namespace SuperHelper
             MaterialColor = _materialColorDefault;
         }
 
-        private void myWeb_Navigated(object sender, NavigationEventArgs e)
-        {
-            SuppressScriptErrors((WebBrowser)sender, true);
-        }
+        //private void myWeb_Navigated(object sender, NavigationEventArgs e)
+        //{
+        //    SuppressScriptErrors((CoreWebView2)sender, true);
+        //}
 
-        private void SuppressScriptErrors(WebBrowser wb, bool Hide)
-        {
-            FieldInfo fiComWebBrowser = typeof(WebBrowser).GetField("_axIWebBrowser2", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (fiComWebBrowser == null) return;
+        //private void SuppressScriptErrors(CoreWebView2 wb, bool Hide)
+        //{
+        //    FieldInfo fiComWebBrowser = typeof(CoreWebView2).GetField("_axIWebBrowser2", BindingFlags.Instance | BindingFlags.NonPublic);
+        //    if (fiComWebBrowser == null) return;
 
-            object objComWebBrowser = fiComWebBrowser.GetValue(wb);
-            if (objComWebBrowser == null) return;
+        //    object objComWebBrowser = fiComWebBrowser.GetValue(wb);
+        //    if (objComWebBrowser == null) return;
 
-            objComWebBrowser.GetType().InvokeMember("Silent", BindingFlags.SetProperty, null, objComWebBrowser, new object[] { Hide });
-        }
+        //    objComWebBrowser.GetType().InvokeMember("Silent", BindingFlags.SetProperty, null, objComWebBrowser, new object[] { Hide });
+        //}
 
         private void SwitchSide_Click(object sender, RoutedEventArgs e)
         {

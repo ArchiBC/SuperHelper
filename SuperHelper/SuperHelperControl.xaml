@@ -6,6 +6,7 @@
              xmlns:local="clr-namespace:SuperHelper"
              xmlns:wf ="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"
              xmlns:wfi="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
             x:Name="Father"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
@@ -57,18 +58,25 @@
                     <Grid DockPanel.Dock="Top">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="365*"/>
-                            <ColumnDefinition Width="251*"/>
+                            <!-- 后退按钮 -->
                             <ColumnDefinition Width="Auto"/>
+                            <!-- 前进按钮 -->
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <!-- URL 文本框 -->
+                            <ColumnDefinition Width="Auto"/>
+                            <!-- 保存按钮 -->
+                            <ColumnDefinition Width="Auto"/>
+                            <!-- 转到按钮 -->
                         </Grid.ColumnDefinitions>
-                        <Label Grid.Column="0" Content="Default Url: " Grid.ColumnSpan="2" Margin="0,0,364,0"/>
-                        <TextBox Grid.Column="1" x:Name="UrlTextBox" Grid.ColumnSpan="2"/>
-                        <Button Grid.Column="3" Content="Save" Click="SaveClick" Margin="3,0,0,0" Template="{StaticResource CornerButtonTemplate}"/>
-                        <Button Grid.Column="4" Content="Go" Click="GoClick" Margin="3,0,0,0" Template="{StaticResource CornerButtonTemplate}"/>
+                        <Button Grid.Column="0" Content="←" Click="BackClick" Margin="3,0,0,0" Template="{StaticResource CornerButtonTemplate}"/>
+                        <Button Grid.Column="1" Content="→" Click="ForwardClick" Margin="3,0,3,0" Template="{StaticResource CornerButtonTemplate}"/>
+                        <Label Grid.Column="2" Content="Url: " Margin="0,0,3,0"/>
+                        <TextBox Grid.Column="3" x:Name="UrlTextBox"/>
+                        <Button Grid.Column="4" Content="Save" Click="SaveClick" Margin="3,0,0,0" Template="{StaticResource CornerButtonTemplate}"/>
+                        <Button Grid.Column="5" Content="Go" Click="GoClick" Margin="3,0,0,0" Template="{StaticResource CornerButtonTemplate}"/>
                     </Grid>
-
-                    <WebBrowser Grid.Row="1" Grid.Column="0"  Grid.ColumnSpan="3" x:Name="myWeb" Navigated="myWeb_Navigated"/>
+                    <wv2:WebView2 Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="6" Name="myWeb"/>
                 </DockPanel>
             </TabItem>
 

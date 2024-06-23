@@ -50,6 +50,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Grasshopper" Version="8.8.24170.13001" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
     <PackageReference Include="SimpleGrasshopper" Version="1.8.2" />
   </ItemGroup>
 </Project>
