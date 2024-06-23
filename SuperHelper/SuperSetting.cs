@@ -5,35 +5,36 @@ namespace SuperHelper;
 
 public static partial class SuperSetting
 {
-    [Config("Open"), ToolButton("C:\\Users\\dell\\OneDrive\\vsProject\\SuperHelper\\SuperHelper\\Resources\\SuperHelperIcon_24.png")]
-    [Setting]
+    [Setting,Config("SuperHelper R8"), ToolButton("SuperHelperIcon_24.png")]
     private static readonly bool open = true;
 
-    [Config("CapsuleHighlight")]
-    public static bool CapsuleHighlight
-    {         
-        get => Grasshopper.CentralSettings.CapsuleHighlight;
-        set 
-        {
-            Grasshopper.CentralSettings.CapsuleHighlight = value;
-            OnCapsuleHighlightChanged?.Invoke(value);
-        }
-    }
 
-    public static event Action<bool> OnCapsuleHighlightChanged;
+    //删除和CapsuleRenderer插件的重复功能
+    //[Config("CapsuleHighlight")]
+    //public static bool CapsuleHighlight
+    //{         
+    //    get => Grasshopper.CentralSettings.CapsuleHighlight;
+    //    set 
+    //    {
+    //        Grasshopper.CentralSettings.CapsuleHighlight = value;
+    //        OnCapsuleHighlightChanged?.Invoke(value);
+    //    }
+    //}
 
-    [Config("CapsuleShine")]
-    public static bool CapsuleShine
-    {
-        get => Grasshopper.CentralSettings.CapsuleShine;
-        set
-        {
-            Grasshopper.CentralSettings.CapsuleShine = value;
-            OnCapsuleShineChanged?.Invoke(value);
-        }
-    }
+    //public static event Action<bool> OnCapsuleHighlightChanged;
 
-    public static event Action<bool> OnCapsuleShineChanged;
+    //[Config("CapsuleShine")]
+    //public static bool CapsuleShine
+    //{
+    //    get => Grasshopper.CentralSettings.CapsuleShine;
+    //    set
+    //    {
+    //        Grasshopper.CentralSettings.CapsuleShine = value;
+    //        OnCapsuleShineChanged?.Invoke(value);
+    //    }
+    //}
+
+    //public static event Action<bool> OnCapsuleShineChanged;
 
 
     static SuperSetting()
