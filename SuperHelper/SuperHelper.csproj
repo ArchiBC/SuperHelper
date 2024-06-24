@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net7.0-windows</TargetFramework>
-    <Version>2.0.2</Version>
+    <Version>2.0.3.0</Version>
     <Title>SuperHelperR8</Title>
     <Description>Much better help window for grasshoopper</Description>
     <TargetExt>.gha</TargetExt>
@@ -43,7 +43,7 @@
     </None>
   </ItemGroup>
   <PropertyGroup Condition="$(Configuration) == 'Debug' AND $([MSBuild]::IsOSPlatform(Windows))">
-    <StartProgram>C:\Program Files\Rhino 7\System\Rhino.exe</StartProgram>
+    <StartProgram>C:\Program Files\Rhino 8\System\Rhino.exe</StartProgram>
     <StartArguments>
     </StartArguments>
     <StartAction>Program</StartAction>
