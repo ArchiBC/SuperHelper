@@ -58,16 +58,11 @@
                     <Grid DockPanel.Dock="Top">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
-                            <!-- 后退按钮 -->
                             <ColumnDefinition Width="Auto"/>
-                            <!-- 前进按钮 -->
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
-                            <!-- URL 文本框 -->
                             <ColumnDefinition Width="Auto"/>
-                            <!-- 保存按钮 -->
                             <ColumnDefinition Width="Auto"/>
-                            <!-- 转到按钮 -->
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0" Content="←" Click="BackClick" Margin="3,0,0,0" Template="{StaticResource CornerButtonTemplate}"/>
                         <Button Grid.Column="1" Content="→" Click="ForwardClick" Margin="3,0,3,0" Template="{StaticResource CornerButtonTemplate}"/>

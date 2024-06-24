@@ -141,6 +141,8 @@ namespace SuperHelper
 
             myWeb.CoreWebView2.NewWindowRequested += CoreWebView2_NewWindowRequested;
 
+            myWeb.CoreWebView2.SourceChanged += CoreWebView2_SourceChanged;
+
         }
 
         private void CoreWebView2_NewWindowRequested(object sender, CoreWebView2NewWindowRequestedEventArgs e)
@@ -150,6 +152,11 @@ namespace SuperHelper
             e.Handled = true; // 阻止默认的打开新窗口的行为
         }
 
+        private void CoreWebView2_SourceChanged(object sender, CoreWebView2SourceChangedEventArgs e)
+        {
+            // 更新UrlTextBox的文本为当前页面的URL
+            UrlTextBox.Text = myWeb.CoreWebView2.Source;
+        }
 
         public void OnClosed()
         {
