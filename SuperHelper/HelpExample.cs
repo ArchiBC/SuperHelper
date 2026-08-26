@@ -236,16 +236,7 @@ namespace SuperHelper
 
         private static Bitmap InitIcon()
         {
-            var path = System.IO.Path.GetDirectoryName(Instances.DocumentEditor.GetType().Assembly.Location) + "\\Tutorials";
-            foreach (var p in Directory.GetFiles(path, "*.gh"))
-            {
-                var result = IconImageConverter.ExtractFromPath(p)?.ToBitmap();
-                if (result != null)
-                {
-                    return result;
-                }
-            }
-            return null;
+            return Properties.Resources.SuperHelperIcon_24;
         }
 
         private Bitmap _picture;
@@ -534,7 +525,10 @@ namespace SuperHelper
         }
         public void Dispose()
         {
-            _documentTask?.Dispose();    
+            if (_documentTask?.IsCompleted == true)
+            {
+                _documentTask.Dispose();
+            }
             _thumbnail?.Dispose();
         }
     }

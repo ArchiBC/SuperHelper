@@ -1,20 +1,24 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net7.0-windows</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Version>2.0.3.1</Version>
-    <Title>SuperHelperR8</Title>
+    <Title>SuperHelperR9</Title>
     <Description>Much better help window for grasshoopper</Description>
     <TargetExt>.gha</TargetExt>
-    <UseWpf>true</UseWpf>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Authors>ArchiBC</Authors>
     <PackageIcon>SuperHelperIcon_128.png</PackageIcon>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
-	<UseWindowsForms>true</UseWindowsForms>
 	<IsPublishable>True</IsPublishable>
 	  <CopyLocalLockFileAssemblies>True</CopyLocalLockFileAssemblies>
 	  <NoWarn>NU1701</NoWarn>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Grasshopper on macOS supplies its WinForms compatibility implementation at runtime. -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
   <ItemGroup>
     <None Remove="AlipayImage.jpg" />
     <None Remove="Resources\SuperHelperIcon_24.png" />
@@ -22,6 +26,9 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources\SuperHelperIcon_24.png" />
+    <EmbeddedResource Include="Resources\Panels\*.svg" />
+    <EmbeddedResource Include="Resources\urls.rhino-cn.json" LogicalName="SuperHelper.Resources.urls.rhino-cn.json" />
+    <EmbeddedResource Include="..\urls.json" Link="Resources\urls.100-gh.json" LogicalName="SuperHelper.Resources.urls.100-gh.json" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="Properties\Resources.Designer.cs">
@@ -42,15 +49,10 @@
       <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
-  <PropertyGroup Condition="$(Configuration) == 'Debug' AND $([MSBuild]::IsOSPlatform(Windows))">
-    <StartProgram>C:\Program Files\Rhino 8\System\Rhino.exe</StartProgram>
-    <StartArguments>
-    </StartArguments>
-    <StartAction>Program</StartAction>
-  </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Grasshopper" Version="8.8.24163.12481" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
-    <PackageReference Include="SimpleGrasshopper" Version="1.8.2" />
+    <PackageReference Include="Grasshopper" Version="9.0.26237.15343-beta" ExcludeAssets="runtime" />
+    <PackageReference Include="RhinoCommon" Version="9.0.26237.15343-beta" ExcludeAssets="runtime" />
+    <PackageReference Include="Eto.Serialization.Xaml" Version="2.11.0" ExcludeAssets="runtime" />
+    <PackageReference Include="SimpleGrasshopper" Version="1.8.6" />
   </ItemGroup>
 </Project>

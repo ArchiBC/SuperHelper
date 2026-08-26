@@ -24,4 +24,4 @@ See the [Quick start](quickstart.md) guide for more details.
 	- Find the assembly which contains the specific document object easily.
 	- Find the inheritance relationship easily.
 
-此版本为Rhino8适配版本，增加了开启按钮。
+此版本已升级至 .NET 10，并适配 Rhino 9。

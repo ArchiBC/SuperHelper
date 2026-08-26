@@ -5,7 +5,7 @@ namespace SuperHelper;
 
 public static partial class SuperSetting
 {
-    [Setting,Config("SuperHelper R8"), ToolButton("SuperHelperIcon_24.png")]
+    [Setting,Config("SuperHelper R9"), ToolButton("SuperHelperIcon_24.png", "SuperHelper workspace")]
     private static readonly bool open = true;
 
 

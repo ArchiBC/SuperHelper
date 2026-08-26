@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Panel xmlns="http://schema.picoe.ca/eto.forms"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       MinimumSize="280, 300">
+  <Panel x:Name="_workspaceContentHost">
+        <!-- Staging only: these XAML contents are moved into Rhino standard panels after loading. -->
+        <StackLayout x:Name="_sectionStaging" Orientation="Vertical" Spacing="0">
+          <StackLayoutItem Expand="True" HorizontalAlignment="Stretch">
+            <Panel x:Name="_commandSection" MinimumSize="100,50">
+              <Panel x:Name="_commandRegionHost">
+                <GroupBox Text="Command History" Padding="0">
+                  <StackLayout Orientation="Vertical" Spacing="1">
+                    <StackLayoutItem Expand="True" HorizontalAlignment="Stretch">
+                      <Panel x:Name="_commandHistoryHost" />
+                    </StackLayoutItem>
+                    <StackLayoutItem HorizontalAlignment="Stretch">
+                      <StackLayout Orientation="Horizontal" Spacing="4" Padding="4,1" VerticalContentAlignment="Center">
+                        <Button x:Name="_historyToggleButton" Text="History" Width="58" Height="24" />
+                        <Label x:Name="_commandPromptLabel" Text="Command:" VerticalAlignment="Center" />
+                        <StackLayoutItem Expand="True" HorizontalAlignment="Stretch">
+                          <ComboBox x:Name="_commandTextBox" AutoComplete="True" ReadOnly="False" />
+                        </StackLayoutItem>
+                        <Button x:Name="_runCommandButton" Text="Run" Width="42" Height="24" />
+                      </StackLayout>
+                    </StackLayoutItem>
+                    <StackLayoutItem HorizontalAlignment="Stretch">
+                      <Panel x:Name="_commandOptionsHost" Visible="False" />
+                    </StackLayoutItem>
+                  </StackLayout>
+                </GroupBox>
+              </Panel>
+            </Panel>
+          </StackLayoutItem>
+          <StackLayoutItem Expand="True" HorizontalAlignment="Stretch">
+            <Panel x:Name="_viewportSection" MinimumSize="100,100">
+              <Panel x:Name="_viewportPane" />
+            </Panel>
+          </StackLayoutItem>
+          <StackLayoutItem Expand="True" HorizontalAlignment="Stretch">
+            <Panel x:Name="_helpSection" MinimumSize="100,100">
+              <TabControl x:Name="_tabs" />
+            </Panel>
+          </StackLayoutItem>
+        </StackLayout>
+  </Panel>
+</Panel>

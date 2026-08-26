@@ -1,129 +1,102 @@
 using Grasshopper;
 using Grasshopper.Kernel;
+using Rhino;
 using System;
-using System.Linq;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Windows.Forms;
-using System.Threading.Tasks;
-using System.Collections.ObjectModel;
 using System.Text;
 using System.Text.Json;
 
-namespace SuperHelper
+namespace SuperHelper;
+
+public abstract class MenuReplacer : GH_DocumentObject
 {
-    public abstract class MenuReplacer : GH_DocumentObject
+    private static readonly MethodInfo HtmlHelpInfo = typeof(GH_DocumentObject)
+        .GetRuntimeMethods().First(method => method.Name.Contains("HtmlHelp_Source"));
+    private static readonly string ExampleUrlLocation = Path.Combine(Folders.SettingsFolder, "urlex.json");
+    private static readonly HighLightConduit HighlightConduit = new() { Enabled = true };
+    private static GH_DocumentObject _lastAutoTarget;
+    private static bool _initialized;
+
+    internal static Dictionary<string, string[]> UrlExDict { get; private set; } = new();
+    internal static SuperHelperControl Control { get; } = new();
+
+    public static DateTime LastDownloadURLTime
     {
-        private static readonly MethodInfo _htmlHelpInfo = typeof(GH_DocumentObject).GetRuntimeMethods().First(m => m.Name.Contains("HtmlHelp_Source"));
+        get => Instances.Settings.GetValue(nameof(LastDownloadURLTime), DateTime.MinValue);
+        set => Instances.Settings.SetValue(nameof(LastDownloadURLTime), value);
+    }
 
-        private static readonly string _location = Path.Combine(Folders.SettingsFolder, "urls.json");
-        private static readonly string _locationEx = Path.Combine(Folders.SettingsFolder, "urlex.json");
+    protected MenuReplacer(IGH_InstanceDescription tag) : base(tag)
+    {
+    }
 
-        internal static Dictionary<string, string> UrlDict = new Dictionary<string, string>();
-        internal static Dictionary<string, string[]> UrlExDict = new Dictionary<string, string[]>();
+    internal static void SaveUrlExToJson() =>
+        File.WriteAllText(ExampleUrlLocation, JsonSerializer.Serialize(UrlExDict));
 
-        internal static SuperHelperControl _control = new SuperHelperControl();
-
-        public static DateTime LastDownloadURLTime
+    public static bool Init()
+    {
+        if (_initialized)
         {
-            get => Instances.Settings.GetValue(nameof(LastDownloadURLTime), DateTime.MinValue);
-            set => Instances.Settings.SetValue(nameof(LastDownloadURLTime), value);
+            return true;
         }
 
-        //[DllImport("kernel32.dll", ExactSpelling = true, CallingConvention = CallingConvention.StdCall, SetLastError = true)]
-        //private static extern int GetUserGeoID(int geoClass);
-        //[DllImport("kernel32.dll")]
-        //private static extern int GetUserDefaultLCID();
+        _initialized = true;
+        ReadUrlConfiguration();
 
-        //[DllImport("kernel32.dll")]
-        //private static extern int GetGeoInfo(int geoid, int geoType, StringBuilder lpGeoData, int cchData, int langid);
+        Instances.ActiveCanvas.DocumentObjectMouseDown += ActiveCanvas_DocumentObjectMouseDown;
+        Instances.ActiveCanvas.CanvasPostPaintObjects += ActiveCanvas_PostPaintObjects;
+        Instances.ActiveCanvas.DocumentChanged += ActiveCanvas_DocumentChanged;
 
-        //public static string GetMachineCurrentLocation()
-        //{
-        //    int geoId = GetUserGeoID(16);
-        //    int lcid = GetUserDefaultLCID();
-        //    StringBuilder locationBuffer = new StringBuilder(100);
-        //    GetGeoInfo(geoId, 5, locationBuffer, locationBuffer.Capacity, lcid);
+        return ExchangeMethod(
+            typeof(GH_DocumentObject).GetRuntimeMethods().First(method => method.Name.Contains("Menu_ObjectHelpClick")),
+            typeof(MenuReplacer).GetRuntimeMethods().First(method => method.Name.Contains(nameof(Menu_ObjectHelpClickNew))));
+    }
 
-        //    return locationBuffer.ToString().Trim();
-        //}
-
-        protected MenuReplacer(IGH_InstanceDescription tag) : base(tag)
+    private static void ReadUrlConfiguration()
+    {
+        try
         {
-        }
-
-        internal static void SaveUrlDictToJson()
-        {
-            File.WriteAllText(_location, JsonSerializer.Serialize(UrlDict));
-        }
-
-        internal static void SaveUrlExToJson()
-        {
-            File.WriteAllText(_locationEx, JsonSerializer.Serialize(UrlExDict));
-        }
-
-        public static bool Init()
-        {
-            new HighLightConduit().Enabled = true;
-            var client =  new System.Net.Http.HttpClient();
-
-            //Read from json.
-            try
+            WebHelpMappings.Initialize();
+#if !DEBUG
+            var now = DateTime.Now;
+            if (now - LastDownloadURLTime > TimeSpan.FromDays(1))
             {
-#if DEBUG
-#else
-                var now = DateTime.Now;
-                //Download for first.
-                if (now - LastDownloadURLTime > new TimeSpan(1, 0, 0, 0))
+                LastDownloadURLTime = now;
+                using var client = new System.Net.Http.HttpClient();
+                try
                 {
-                    LastDownloadURLTime = now;
-                    try
-                    {
-                        var bytes = client.GetByteArrayAsync(@"https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urls.json").Result;
-                        UrlDict = JsonSerializer.Deserialize<Dictionary<string, string>>(Encoding.UTF8.GetString(bytes));
-                    }
-                    catch
-                    {
-
-                    }
-
-                    try
-                    {
-                        var bytes = client.GetByteArrayAsync(@"https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urlex.json").Result;
-                        UrlExDict = JsonSerializer.Deserialize<Dictionary<string, string[]>>(Encoding.UTF8.GetString(bytes));
-                    }
-                    catch
-                    {
-
-                    }
+                    var bytes = client.GetByteArrayAsync("https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urls.json").Result;
+                    WebHelpMappings.Merge100GhJson(Encoding.UTF8.GetString(bytes));
                 }
+                catch
+                {
+                }
+
+                try
+                {
+                    var bytes = client.GetByteArrayAsync("https://gitee.com/ArchiTed1998/SuperHelper/raw/master/urlex.json").Result;
+                    UrlExDict = JsonSerializer.Deserialize<Dictionary<string, string[]>>(Encoding.UTF8.GetString(bytes)) ?? new();
+                }
+                catch
+                {
+                }
+            }
 #endif
 
-                if (File.Exists(_location))
+            if (File.Exists(ExampleUrlLocation))
+            {
+                var local = JsonSerializer.Deserialize<Dictionary<string, string[]>>(File.ReadAllText(ExampleUrlLocation));
+                if (local != null)
                 {
-                    string jsonStr = File.ReadAllText(_location);
-                    foreach (var pair in JsonSerializer.Deserialize<Dictionary<string, string>>(jsonStr))
+                    foreach (var pair in local)
                     {
-                        UrlDict[pair.Key] = pair.Value;
-                    }
-                }
-
-
-                if (File.Exists(_locationEx))
-                {
-                    string jsonStr = File.ReadAllText(_locationEx);
-                    foreach (var pair in JsonSerializer.Deserialize<Dictionary<string, string[]>>(jsonStr))
-                    {
-                        if(UrlExDict.TryGetValue(pair.Key, out var values))
+                        if (UrlExDict.TryGetValue(pair.Key, out var existing))
                         {
-                            var strs = new HashSet<string>(values);
-                            foreach (var s in pair.Value)
-                            {
-                                strs.Add(s);
-                            }
-                            UrlExDict[pair.Key] = strs.ToArray();
+                            UrlExDict[pair.Key] = existing.Concat(pair.Value).Distinct().ToArray();
                         }
                         else
                         {
@@ -132,186 +105,152 @@ namespace SuperHelper
                     }
                 }
             }
-            catch (Exception ex)
+        }
+        catch (Exception exception)
+        {
+            Eto.Forms.MessageBox.Show(exception.Message, "SuperHelper", Eto.Forms.MessageBoxType.Error);
+        }
+    }
+
+    private static void ActiveCanvas_DocumentChanged(
+        Grasshopper.GUI.Canvas.GH_Canvas sender,
+        Grasshopper.GUI.Canvas.GH_CanvasDocumentChangedEventArgs e)
+    {
+        _lastAutoTarget = null;
+        if (e.OldDocument != null)
+        {
+            e.OldDocument.SolutionEnd -= DocumentSolutionEnd;
+        }
+        if (e.NewDocument != null)
+        {
+            e.NewDocument.SolutionEnd -= DocumentSolutionEnd;
+            e.NewDocument.SolutionEnd += DocumentSolutionEnd;
+        }
+    }
+
+    private static void DocumentSolutionEnd(object sender, GH_SolutionEventArgs e)
+    {
+        if (Control.SelectedTabIndex == 3 && Control.CurrentObject != null)
+        {
+            RhinoApp.InvokeOnUiThread((Action)Control.RefreshObjectData);
+        }
+    }
+
+    private static bool ExchangeMethod(MethodInfo targetMethod, MethodInfo injectMethod)
+    {
+        if (targetMethod == null || injectMethod == null)
+        {
+            return false;
+        }
+
+        RuntimeHelpers.PrepareMethod(targetMethod.MethodHandle);
+        RuntimeHelpers.PrepareMethod(injectMethod.MethodHandle);
+        unsafe
+        {
+            if (IntPtr.Size == 4)
             {
-                MessageBox.Show(ex.Message);
+                var target = (int*)targetMethod.MethodHandle.Value.ToPointer() + 2;
+                var inject = (int*)injectMethod.MethodHandle.Value.ToPointer() + 2;
+                (*target, *inject) = (*inject, *target);
             }
-
-            Instances.ActiveCanvas.DocumentObjectMouseDown += ActiveCanvas_DocumentObjectMouseDown;
-            Instances.ActiveCanvas.DocumentChanged += ActiveCanvas_DocumentChanged;
-
-            return ExchangeMethod(
-                typeof(GH_DocumentObject).GetRuntimeMethods().Where(m => m.Name.Contains("Menu_ObjectHelpClick")).First(),
-                typeof(MenuReplacer).GetRuntimeMethods().Where(m => m.Name.Contains(nameof(Menu_ObjectHelpClickNew))).First()
-                );
-        }
-
-        private static void ActiveCanvas_DocumentChanged(Grasshopper.GUI.Canvas.GH_Canvas sender, Grasshopper.GUI.Canvas.GH_CanvasDocumentChangedEventArgs e)
-        {
-            if(e.OldDocument != null)
+            else
             {
-                e.OldDocument.SolutionEnd -= DocumentSolutionEnd;
-            }
-            if (e.NewDocument != null)
-            {
-                e.NewDocument.SolutionEnd -= DocumentSolutionEnd;
-                e.NewDocument.SolutionEnd += DocumentSolutionEnd;
-            }
-        }
-
-        private static void DocumentSolutionEnd(object sender, GH_SolutionEventArgs e)
-        {
-            if (_control.MajorControl.SelectedIndex != 3) return;
-            var data = _control.DataContext;
-            if (data == null) return;
-
-            _control.DataContext = null;
-            _control.DataContext = data;
-        }
-
-        private static bool ExchangeMethod(MethodInfo targetMethod, MethodInfo injectMethod)
-        {
-            if (targetMethod == null || injectMethod == null)
-            {
-                return false;
-            }
-            RuntimeHelpers.PrepareMethod(targetMethod.MethodHandle);
-            RuntimeHelpers.PrepareMethod(injectMethod.MethodHandle);
-            unsafe
-            {
-                if (IntPtr.Size == 4)
-                {
-                    int* tar = (int*)targetMethod.MethodHandle.Value.ToPointer() + 2;
-                    int* inj = (int*)injectMethod.MethodHandle.Value.ToPointer() + 2;
-                    var relay = *tar;
-                    *tar = *inj;
-                    *inj = relay;
-                }
-                else
-                {
-                    long* tar = (long*)targetMethod.MethodHandle.Value.ToPointer() + 1;
-                    long* inj = (long*)injectMethod.MethodHandle.Value.ToPointer() + 1;
-                    var relay = *tar;
-                    *tar = *inj;
-                    *inj = relay;
-                }
-            }
-            return true;
-        }
-
-        private void Menu_ObjectHelpClickNew(object sender, EventArgs e)
-        {
-            SimpleAssemblyPriority.Show();
-            SetOneObject(this);
-        }
-
-        private static void SetOneObject(GH_DocumentObject obj)
-        {
-            Task.Run(() =>
-            {
-                HighLightConduit.HighLightObject = null;
-                foreach (var view in Rhino.RhinoDoc.ActiveDoc.Views)
-                {
-                    view.Redraw();
-                }
-
-                _control.Dispatcher.Invoke(() =>
-                {
-                    bool shouldSwitchURL = true;
-                    if(_control.DataContext is GH_DocumentObject docObj)
-                    {
-                        if (docObj.ComponentGuid == obj.ComponentGuid) shouldSwitchURL = false;
-                    }
-
-                    //Change selected tabItem.
-                    if((_control.MajorControl.SelectedIndex == 5 && _control.DataContext == null) || _control.MajorControl.SelectedIndex == 6)
-                    {
-                        _control.MajorControl.SelectedIndex = 3;
-                    }
-
-                    try
-                    {
-                        _control.DataContext = null;
-                        _control.DataContext = obj;
-                    }
-                    catch
-                    {
-
-                    }
-
-                    if (!shouldSwitchURL) return;
-
-                    string html = (string)_htmlHelpInfo.Invoke(obj, new object[0]);
-
-                    //OldUrl
-                    if (html == null || html.Length == 0)
-                    {
-                        html = "We're sorry. Help is not yet available for this object";
-                    }
-
-                    if (html.StartsWith("GOTO:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _control.oldUrl.AllowNavigation = true;
-                        _control.oldUrl.Navigate(html.Substring(5));
-                    }
-                    else
-                    {
-                        _control.oldUrl.Navigate("about:blank");
-                        _control.oldUrl.Document.OpenNew(false);
-
-                        _control.oldUrl.Document.Write(html);
-                        _control.oldUrl.Refresh();
-                    }
-
-                    if (obj != null)
-                    {
-                        //meWeb
-                        if (UrlDict.TryGetValue(obj.ComponentGuid.ToString(), out string url))
-                        {
-                            _control.UrlTextBox.Text = url;
-
-                            if (_control.myWeb.Source == null)
-                            {
-                                _control.myWeb.Source = new Uri(url);
-                            }
-                        }
-                        else if (html.StartsWith("GOTO:", StringComparison.OrdinalIgnoreCase))
-                        {
-                            url = html.Substring(5);
-                            _control.UrlTextBox.Text = url;
-
-                            if (_control.myWeb.Source == null)
-                            {
-                                _control.myWeb.Source = new Uri(url);
-                            }
-                        }
-                        else
-                        {
-                            _control.UrlTextBox.Text = "";
-                        }
-
-                        //Example
-                        _control.SaveExampleValue(false);
-                        if (UrlExDict.TryGetValue(obj.ComponentGuid.ToString(), out string[] urls))
-                        {
-                            _control.ExampleList.ItemsSource = new ObservableCollection<HelpExample>(urls.Select(u => new HelpExample(u)));
-                        }
-                        else
-                        {
-                            _control.ExampleList.ItemsSource = new ObservableCollection<HelpExample>();
-                        }
-                    }
-                });
-            });
-        }
-
-        internal static void ActiveCanvas_DocumentObjectMouseDown(object sender, Grasshopper.GUI.GH_CanvasObjectMouseDownEventArgs e)
-        {
-            if (_control.AutoTarget)
-            {
-                var obj = (GH_DocumentObject)e.Object.Object.Attributes.GetTopLevel?.DocObject;
-                SetOneObject(obj);
+                var target = (long*)targetMethod.MethodHandle.Value.ToPointer() + 1;
+                var inject = (long*)injectMethod.MethodHandle.Value.ToPointer() + 1;
+                (*target, *inject) = (*inject, *target);
             }
         }
+        return true;
+    }
+
+    private void Menu_ObjectHelpClickNew(object sender, EventArgs e)
+    {
+        SimpleAssemblyPriority.Show();
+        SetOneObject(this);
+    }
+
+    private static void SetOneObject(GH_DocumentObject obj)
+    {
+        if (obj == null)
+        {
+            return;
+        }
+
+        RhinoApp.InvokeOnUiThread((Action)(() =>
+        {
+            HighLightConduit.HighLightObject = null;
+            RhinoDoc.ActiveDoc?.Views.Redraw();
+
+            var html = HtmlHelpInfo.Invoke(obj, Array.Empty<object>()) as string;
+            html = string.IsNullOrWhiteSpace(html)
+                ? "We're sorry. Help is not yet available for this object"
+                : html;
+
+            var webUrl = WebHelpMappings.Resolve(obj, html);
+
+            UrlExDict.TryGetValue(obj.ComponentGuid.ToString(), out var examples);
+            Control.SetObject(obj, html, webUrl, examples ?? Array.Empty<string>());
+        }));
+    }
+
+    internal static void RefreshCurrentObject()
+    {
+        if (Control.CurrentObject != null)
+        {
+            SetOneObject(Control.CurrentObject);
+        }
+    }
+
+    internal static void ActiveCanvas_DocumentObjectMouseDown(
+        object sender,
+        Grasshopper.GUI.GH_CanvasObjectMouseDownEventArgs e)
+    {
+        if (!Control.AutoTarget)
+        {
+            return;
+        }
+
+        // GH_RelevantObjectData already resolves input/output grips and nested
+        // attributes to the owning top-level component. Going through
+        // Object.Attributes.GetTopLevel is not reliable for every GH object.
+        var obj = e.Object.TopLevelObject as GH_DocumentObject
+            ?? e.Object.Object as GH_DocumentObject;
+        _lastAutoTarget = obj;
+        SetOneObject(obj);
+    }
+
+    private static void ActiveCanvas_PostPaintObjects(Grasshopper.GUI.Canvas.GH_Canvas canvas)
+    {
+        if (!Control.AutoTarget || canvas?.Document == null)
+        {
+            return;
+        }
+
+        // DocumentObjectMouseDown gives immediate feedback. This lightweight
+        // selection check covers box selection, keyboard selection commands,
+        // undo/redo and restored document selections, none of which raise the
+        // object mouse-down event. It does no page work while the target is
+        // unchanged, so normal canvas repaints remain cheap.
+        var selected = canvas.Document.SelectedObjects();
+        if (selected == null || selected.Count == 0)
+        {
+            _lastAutoTarget = null;
+            return;
+        }
+
+        if (Control.CurrentObject != null && selected.Contains(Control.CurrentObject))
+        {
+            _lastAutoTarget = Control.CurrentObject;
+            return;
+        }
+
+        var obj = selected.OfType<GH_DocumentObject>().LastOrDefault();
+        if (obj == null || ReferenceEquals(obj, _lastAutoTarget))
+        {
+            return;
+        }
+
+        _lastAutoTarget = obj;
+        SetOneObject(obj);
     }
 }

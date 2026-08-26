@@ -12,13 +12,13 @@ namespace SuperHelper
         {
             if(HighLightObject != null && HighLightObject.Length > 0)
             {
-                int thickness = MenuReplacer._control.DisplayWireWidth;
+                int thickness = MenuReplacer.Control.DisplayWireWidth;
 
                 foreach (var item in HighLightObject)
                 {
-                    item.DrawViewportWires(new GH_PreviewWireArgs(e.Viewport, e.Display, MenuReplacer._control.WireColor, thickness));
+                    item.DrawViewportWires(new GH_PreviewWireArgs(e.Viewport, e.Display, MenuReplacer.Control.WireColor, thickness));
                     item.DrawViewportMeshes(new GH_PreviewMeshArgs(e.Viewport, e.Display,
-                        new DisplayMaterial(MenuReplacer._control.MaterialColor), MeshingParameters.Default));
+                        new DisplayMaterial(MenuReplacer.Control.MaterialColor), MeshingParameters.Default));
                 }
 
             }
