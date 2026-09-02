@@ -1,4 +1,5 @@
 using Eto.Forms;
+using Grasshopper;
 using Rhino;
 using System;
 using System.Collections.Generic;
@@ -7,6 +8,9 @@ namespace SuperHelper;
 
 public sealed partial class SuperHelperControl
 {
+    private const string DefaultCommandVisibleKey = "SuperHelper.Default.CommandVisible";
+    private const string DefaultViewportVisibleKey = "SuperHelper.Default.ViewportVisible";
+    private const string DefaultHelpVisibleKey = "SuperHelper.Default.HelpVisible";
     private EmbeddedRhinoWorkspace _embeddedWorkspace;
 
     private void InitializeWorkspaceLayout()
@@ -108,6 +112,52 @@ public sealed partial class SuperHelperControl
         {
             ShowWorkspaceError(error);
         }
+    }
+
+    internal bool IsWorkspaceSectionVisible(EmbeddedWorkspaceSection section) =>
+        _embeddedWorkspace?.IsSectionVisible(section) == true;
+
+    internal void SetWorkspaceSectionVisible(EmbeddedWorkspaceSection section, bool visible)
+    {
+        var error = "Rhino workspace is not ready.";
+        if (_embeddedWorkspace?.TrySetSectionVisible(section, visible, out error) != true)
+        {
+            ShowWorkspaceError(error);
+            return;
+        }
+        SyncSectionVisibilityControls();
+    }
+
+    internal void RestoreBuiltInWorkspace()
+    {
+        var error = "Rhino workspace is not ready.";
+        if (_embeddedWorkspace?.TryRestoreBuiltIn(out error) != true)
+        {
+            ShowWorkspaceError(error);
+            return;
+        }
+        SyncSectionVisibilityControls();
+        ResetSettingsScrollPosition();
+    }
+
+    internal void UseCurrentWorkspaceAsDefault()
+    {
+        Instances.Settings.SetValue(DefaultCommandVisibleKey, IsWorkspaceSectionVisible(EmbeddedWorkspaceSection.Command));
+        Instances.Settings.SetValue(DefaultViewportVisibleKey, IsWorkspaceSectionVisible(EmbeddedWorkspaceSection.Viewport));
+        Instances.Settings.SetValue(DefaultHelpVisibleKey, IsWorkspaceSectionVisible(EmbeddedWorkspaceSection.Help));
+    }
+
+    internal void RestoreDefaultWorkspace()
+    {
+        SetWorkspaceSectionVisible(
+            EmbeddedWorkspaceSection.Command,
+            Instances.Settings.GetValue(DefaultCommandVisibleKey, true));
+        SetWorkspaceSectionVisible(
+            EmbeddedWorkspaceSection.Viewport,
+            Instances.Settings.GetValue(DefaultViewportVisibleKey, true));
+        SetWorkspaceSectionVisible(
+            EmbeddedWorkspaceSection.Help,
+            Instances.Settings.GetValue(DefaultHelpVisibleKey, true));
     }
 
     private void ShowWorkspaceError(string error) => MessageBox.Show(

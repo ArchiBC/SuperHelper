@@ -27,11 +27,21 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private static readonly Guid PlugInId = new Guid("B45A29B1-4343-4035-989E-044E8580D9CF");
 
-	private static readonly Guid CommandDockBarId = new Guid("37A151C8-9700-446E-B1A8-82B6BA3CEB0A");
+	private static readonly Guid[] LegacyDockBarIds =
+	{
+		new("37A151C8-9700-446E-B1A8-82B6BA3CEB0A"),
+		new("F7AAB540-D083-4082-8509-52F74054C8B1"),
+		new("C30FC4B2-9235-42BD-9966-F3DDD020225C"),
+	};
 
-	private static readonly Guid ViewportDockBarId = new Guid("F7AAB540-D083-4082-8509-52F74054C8B1");
+	// The embedded GH workspace is transient. Reusing stable dock-bar ids makes
+	// Rhino restore them into its global layout and then rejects the next private
+	// workspace with "The dock bar Id is currently in use".
+	private readonly Guid _commandDockBarId = Guid.NewGuid();
 
-	private static readonly Guid HelpDockBarId = new Guid("C30FC4B2-9235-42BD-9966-F3DDD020225C");
+	private readonly Guid _viewportDockBarId = Guid.NewGuid();
+
+	private readonly Guid _helpDockBarId = Guid.NewGuid();
 
 	private readonly RhinoDoc _document;
 
@@ -81,6 +91,8 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private bool _relayoutPending;
 
+	private bool _contentFitPending;
+
 	public Control Control => (Control)(object)_layout;
 
 	public int SelectedHelpIndex
@@ -119,12 +131,49 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		_collectionType = RequireType("Rhino.UI.Internal.TabPanels.TabPanelCollection");
 		_collectionsType = RequireType("Rhino.UI.Internal.TabPanels.TabPanelCollections");
 		_dockSitePlacementType = RequireType("Rhino.UI.Internal.TabPanels.DockSitePlacement");
-		EmbeddedRhinoPanelContent.Set(contents);
+		RemoveLegacyEmbeddedCollections();
+		EmbeddedRhinoPanelContent.Clear();
 		RegisterSuperHelperPanels();
+		EmbeddedRhinoPanelContent.Set(contents);
 		_dockSites = Activator.CreateInstance(_dockSitesType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[1] { _document }, null) ?? throw new InvalidOperationException("Unable to create Rhino dock sites.");
 		CreateSiteControls();
 		CreateInitialCollections();
 		BuildHost();
+	}
+
+	private void RemoveLegacyEmbeddedCollections()
+	{
+		MethodInfo fromDockBarId = _collectionsType.GetMethod(
+			"FromDockBarId",
+			StaticFlags,
+			null,
+			new[] { typeof(Guid) },
+			null);
+		MethodInfo remove = _collectionsType.GetMethod(
+			"Remove",
+			StaticFlags,
+			null,
+			new[] { _collectionType },
+			null);
+		foreach (Guid dockBarId in LegacyDockBarIds)
+		{
+			object collection = fromDockBarId?.Invoke(null, new object[] { dockBarId });
+			if (collection != null)
+			{
+				remove?.Invoke(null, new[] { collection });
+			}
+		}
+
+		MethodInfo resetLastCollection = _collectionType.GetMethod(
+			"SetLastCollectionPanelWasIn",
+			StaticFlags,
+			null,
+			new[] { typeof(Guid), typeof(Guid) },
+			null);
+		foreach (Guid panelId in EmbeddedRhinoPanelIds.All)
+		{
+			resetLastCollection?.Invoke(null, new object[] { panelId, Guid.Empty });
+		}
 	}
 
 	public void SelectHelpPage(int index)
@@ -132,7 +181,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		if (index >= 0 && index < EmbeddedRhinoPanelIds.HelpPages.Count)
 		{
 			Guid panelId = EmbeddedRhinoPanelIds.HelpPages[index];
-			object obj = AllCollections().FirstOrDefault((object value) => ContainsPanel(value, panelId));
+			object obj = ContainsPanel(_helpCollection, panelId) ? _helpCollection : null;
 			if (obj != null)
 			{
 				object obj2 = CollectionState(obj);
@@ -152,7 +201,12 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 				error = $"Rhino panel is not registered: {panelId}";
 				return false;
 			}
-			object obj = AllCollections().FirstOrDefault((object value) => ContainsPanel(value, EmbeddedRhinoPanelIds.Settings)) ?? _helpCollection;
+			EmbeddedWorkspaceSection section = panelId == EmbeddedRhinoPanelIds.Command
+				? EmbeddedWorkspaceSection.Command
+				: panelId == EmbeddedRhinoPanelIds.Viewport
+					? EmbeddedWorkspaceSection.Viewport
+					: EmbeddedWorkspaceSection.Help;
+			object obj = SectionCollection(section);
 			if (obj == null)
 			{
 				error = "No target Rhino container is available.";
@@ -170,7 +224,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			}
 			EnsureCollectionVisible(obj, 280);
 			SelectPanel(obj, panelId);
-			QueueRelayout();
+			QueueRelayoutAndFitBands();
 			return true;
 		}
 		catch (Exception exception)
@@ -188,6 +242,17 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			return false;
 		}
 		object obj2 = _collectionType.GetProperty("DockBar", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(obj);
+		object placement = obj2?.GetType().GetMethod(
+			"Placement",
+			InstanceFlags,
+			null,
+			new[] { typeof(uint) },
+			null)?.Invoke(obj2, new object[] { _document.RuntimeSerialNumber });
+		if (placement?.GetType().GetProperty("Visible", InstanceFlags)?.GetValue(placement) is bool visible
+			&& !visible)
+		{
+			return false;
+		}
 		int result;
 		if (obj2 != null)
 		{
@@ -228,7 +293,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			{
 				HideCollection(obj);
 			}
-			QueueRelayout();
+			QueueRelayoutAndFitBands();
 			return true;
 		}
 		catch (Exception exception)
@@ -241,6 +306,29 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 	public bool TryOpenSettings(out string error)
 	{
 		return TryAddPanel(EmbeddedRhinoPanelIds.Settings, out error);
+	}
+
+	public bool TryRestoreBuiltIn(out string error)
+	{
+		error = string.Empty;
+		try
+		{
+			HideCollection(_commandCollection);
+			HideCollection(_viewportCollection);
+			HideCollection(_helpCollection);
+			EnsureCollectionVisible(_commandCollection, SectionBandSize(EmbeddedWorkspaceSection.Command));
+			EnsureCollectionVisible(_viewportCollection, SectionBandSize(EmbeddedWorkspaceSection.Viewport));
+			EnsureCollectionVisible(_helpCollection, SectionBandSize(EmbeddedWorkspaceSection.Help));
+			_initialBandsFitted = false;
+			SelectPanel(_helpCollection, EmbeddedRhinoPanelIds.Settings);
+			QueueRelayoutAndFitBands();
+			return true;
+		}
+		catch (Exception exception)
+		{
+			error = Unwrap(exception).Message;
+			return false;
+		}
 	}
 
 	private void RegisterSuperHelperPanels()
@@ -318,9 +406,9 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private void CreateInitialCollections()
 	{
-		_commandCollection = AddInitialCollection("Command", CommandDockBarId, EmbeddedRhinoPanelIds.Command, new[] { EmbeddedRhinoPanelIds.Command }, 82);
-		_viewportCollection = AddInitialCollection("Viewport", ViewportDockBarId, EmbeddedRhinoPanelIds.Viewport, new[] { EmbeddedRhinoPanelIds.Viewport }, 285);
-		_helpCollection = AddInitialCollection("Help", HelpDockBarId, EmbeddedRhinoPanelIds.FileManager, EmbeddedRhinoPanelIds.HelpPages, 300);
+		_commandCollection = AddInitialCollection("Command", _commandDockBarId, EmbeddedRhinoPanelIds.Command, new[] { EmbeddedRhinoPanelIds.Command }, 82);
+		_viewportCollection = AddInitialCollection("Viewport", _viewportDockBarId, EmbeddedRhinoPanelIds.Viewport, new[] { EmbeddedRhinoPanelIds.Viewport }, 285);
+		_helpCollection = AddInitialCollection("Help", _helpDockBarId, EmbeddedRhinoPanelIds.FileManager, EmbeddedRhinoPanelIds.HelpPages, 300);
 	}
 
 	private object SectionCollection(EmbeddedWorkspaceSection section)
@@ -422,15 +510,27 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		Size clientSize = ((Container)_layout).ClientSize;
 		if (clientSize.Height >= 180)
 		{
-			_initialBandsFitted = true;
 			object[] array = SiteBands(_sites[DockLocation.Top]).ToArray();
-			if (array.Length == 3)
+			if (array.Length > 0)
 			{
+				_initialBandsFitted = true;
 				clientSize = ((Container)_layout).ClientSize;
 				int num = Math.Max(180, clientSize.Height - 16);
-				SetProperty(array[0], "Size", Math.Min(88f, (float)num * 0.18f));
-				SetProperty(array[1], "Size", Math.Max(100f, (float)num * 0.43f));
-				SetProperty(array[2], "Size", Math.Max(100f, (float)num - GetFloat(array[0], "Size") - GetFloat(array[1], "Size")));
+				if (array.Length == 1)
+				{
+					SetProperty(array[0], "Size", (float)num);
+				}
+				else if (array.Length == 2)
+				{
+					SetProperty(array[0], "Size", Math.Max(82f, (float)num * 0.34f));
+					SetProperty(array[1], "Size", Math.Max(100f, (float)num - GetFloat(array[0], "Size")));
+				}
+				else
+				{
+					SetProperty(array[0], "Size", Math.Min(88f, (float)num * 0.18f));
+					SetProperty(array[1], "Size", Math.Max(100f, (float)num * 0.43f));
+					SetProperty(array[^1], "Size", Math.Max(100f, (float)num - array.Take(array.Length - 1).Sum(band => GetFloat(band, "Size"))));
+				}
 				RecalculateSite(DockLocation.Top);
 			}
 		}
@@ -490,25 +590,89 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			RecalculateSite(item);
 		}
 		DisableEmbeddedDragHandles();
+		QueueVisiblePanelContentFit();
+	}
+
+	private void QueueVisiblePanelContentFit()
+	{
+		if (_contentFitPending)
+		{
+			return;
+		}
+
+		Application application = Application.Instance;
+		if (application == null)
+		{
+			FitVisiblePanelContents();
+			return;
+		}
+
+		_contentFitPending = true;
+		application.AsyncInvoke((Action)delegate
+		{
+			_contentFitPending = false;
+			FitVisiblePanelContents();
+		});
+	}
+
+	private void FitVisiblePanelContents()
+	{
+		foreach (EmbeddedWorkspaceSection section in new[]
+		{
+			EmbeddedWorkspaceSection.Command,
+			EmbeddedWorkspaceSection.Viewport,
+			EmbeddedWorkspaceSection.Help,
+		}.Where(IsSectionVisible))
+		{
+			object state = CollectionState(SectionCollection(section));
+			object collectionControl = state?.GetType().GetMethod(
+				"GetCollectionControl",
+				InstanceFlags,
+				null,
+				Type.EmptyTypes,
+				null)?.Invoke(state, null);
+			Panel contentPanel = collectionControl?.GetType().GetProperty(
+				"ContentPanel",
+				InstanceFlags)?.GetValue(collectionControl) as Panel;
+			if (contentPanel?.Content is SuperHelperRhinoPanel panel)
+			{
+				panel.FitToContainer(contentPanel.ClientSize);
+			}
+		}
 	}
 
 	private void DisableEmbeddedDragHandles()
 	{
-		//IL_00bf: Unknown result type (might be due to invalid IL or missing references)
-		foreach (Control value in _siteControls.Values)
+		foreach (object collection in _ownedCollections)
 		{
-			foreach (Control item in value.VisualControls.Where((Control value) => string.Equals(((object)value).GetType().Name, "TabPanelCollectionControl", StringComparison.Ordinal)))
+			object state = CollectionState(collection);
+			object collectionControl = state?.GetType().GetMethod(
+				"GetCollectionControl",
+				InstanceFlags,
+				null,
+				Type.EmptyTypes,
+				null)?.Invoke(state, null);
+			if (collectionControl == null)
 			{
-				string[] array = new string[2] { "VGripper", "HGripper" };
-				foreach (string name in array)
+				continue;
+			}
+
+			collectionControl.GetType().GetMethod(
+				"SetGripperText",
+				InstanceFlags,
+				null,
+				new[] { typeof(string) },
+				null)?.Invoke(collectionControl, new object[] { string.Empty });
+
+			foreach (string name in new[] { "VGripper", "HGripper" })
+			{
+				object gripper = collectionControl.GetType().GetProperty(
+					name,
+					InstanceFlags)?.GetValue(collectionControl);
+				if (gripper is Control control)
 				{
-					object obj = ((object)item).GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(item);
-					Control val = (Control)((obj is Control) ? obj : null);
-					if (val != null)
-					{
-						val.Visible = false;
-						val.Size = Size.Empty;
-					}
+					control.Visible = false;
+					control.Size = Size.Empty;
 				}
 			}
 		}
@@ -564,6 +728,10 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		}
 		Control val = _siteControls[location];
 		float num = Convert.ToSingle(((object)val).GetType().GetProperty("DockSiteSize", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(val) ?? ((object)0f));
+		if (num < 1f)
+		{
+			num = SiteBands(target).Sum(band => Math.Max(0f, GetFloat(band, "Size")));
+		}
 		return Math.Clamp((int)Math.Ceiling(num), emptySize, Math.Max(emptySize, available));
 	}
 
@@ -591,6 +759,74 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 				Relayout();
 			});
 		}
+	}
+
+	private void QueueRelayoutAndFitBands()
+	{
+		_initialBandsFitted = false;
+		Application instance = Application.Instance;
+		if (instance == null)
+		{
+			NormalizeTopBandOrder();
+			FitInitialTopBands();
+			Relayout();
+			return;
+		}
+		instance.AsyncInvoke((Action)delegate
+		{
+			NormalizeTopBandOrder();
+			FitInitialTopBands();
+			Relayout();
+		});
+	}
+
+	private void NormalizeTopBandOrder()
+	{
+		EmbeddedWorkspaceSection[] order =
+		{
+			EmbeddedWorkspaceSection.Command,
+			EmbeddedWorkspaceSection.Viewport,
+			EmbeddedWorkspaceSection.Help,
+		};
+		var visible = order.Where(IsSectionVisible).ToArray();
+		foreach (EmbeddedWorkspaceSection section in visible)
+		{
+			object collection = SectionCollection(section);
+			object dockBar = _collectionType.GetProperty("DockBar", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(collection);
+			if (dockBar == null)
+			{
+				continue;
+			}
+			foreach (object site in _sites.Values.Where(value => SiteContainsDockBar(value, dockBar)))
+			{
+				_dockSiteType.GetMethod("RemoveDockBar", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[1] { dockBar.GetType() }, null)?.Invoke(site, new object[1] { dockBar });
+			}
+		}
+
+		foreach (EmbeddedWorkspaceSection section in visible)
+		{
+			object collection = SectionCollection(section);
+			object dockBar = _collectionType.GetProperty("DockBar", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(collection);
+			object state = dockBar?.GetType().GetMethod("State", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[1] { typeof(uint) }, null)?.Invoke(dockBar, new object[1] { _document.RuntimeSerialNumber });
+			if (dockBar == null || state == null)
+			{
+				continue;
+			}
+			object placement = dockBar.GetType().GetMethod("Placement", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[1] { typeof(uint) }, null)?.Invoke(dockBar, new object[1] { _document.RuntimeSerialNumber });
+			placement?.GetType().GetProperty("Visible", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.SetValue(placement, true);
+			placement?.GetType().GetProperty("DockLocation", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.SetValue(placement, RhinoDockLocation(DockLocation.Top));
+			object sitePlacement = Activator.CreateInstance(_dockSitePlacementType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[2] { -1, -1 }, null);
+			_dockSiteType.GetMethod("AddDockBar", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.Invoke(
+				_sites[DockLocation.Top],
+				new object[4] { dockBar, state, sitePlacement, SectionBandSize(section) });
+		}
+		RecalculateSite(DockLocation.Top);
+	}
+
+	private bool SiteContainsDockBar(object site, object dockBar)
+	{
+		object result = _dockSiteType.GetMethod("ContainsDockBar", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[1] { dockBar.GetType() }, null)?.Invoke(site, new object[1] { dockBar });
+		return result is bool contains && contains;
 	}
 
 	private void EnsureCollectionVisible(object collection, int bandSize)
@@ -642,11 +878,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private bool WorkspaceContainsDockBar(object dockBar)
 	{
-		return _sites.Values.Any(delegate(object site)
-		{
-			object obj = _dockSiteType.GetMethod("ContainsDockBar", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[1] { dockBar.GetType() }, null)?.Invoke(site, new object[1] { dockBar });
-			return obj is bool && (bool)obj;
-		});
+		return _sites.Values.Any(site => SiteContainsDockBar(site, dockBar));
 	}
 
 	private object FloatingForm(object dockBar)
@@ -656,9 +888,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private bool IsPanelSelected(Guid panelId)
 	{
-		foreach (object item in from value in AllCollections()
-			where ContainsPanel(value, panelId)
-			select value)
+		foreach (object item in _ownedCollections.Where(value => ContainsPanel(value, panelId)))
 		{
 			object obj = CollectionState(item);
 			if (obj?.GetType().GetProperty("SelectedItemId", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(obj) is Guid guid && guid == panelId)
@@ -667,24 +897,6 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			}
 		}
 		return false;
-	}
-
-	private IEnumerable<object> AllCollections()
-	{
-		if (!(_collectionsType.GetProperty("Collections", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(null) is IEnumerable enumerable))
-		{
-			return _ownedCollections.ToArray();
-		}
-		List<object> list = new List<object>();
-		foreach (object item in enumerable)
-		{
-			object obj = item?.GetType().GetProperty("Value")?.GetValue(item);
-			if (obj != null)
-			{
-				list.Add(obj);
-			}
-		}
-		return list;
 	}
 
 	private bool ContainsPanel(object collection, Guid panelId)

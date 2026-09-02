@@ -24,7 +24,7 @@ public sealed partial class SuperHelperControl
                 new TableRow(new TableCell(null, true), _assemblyLocationButton, new TableCell(null, true)),
             },
         };
-        return new TableLayout
+        var content = new TableLayout
         {
             Padding = new Padding(8, 6),
             Spacing = new Size(4, 6),
@@ -34,6 +34,13 @@ public sealed partial class SuperHelperControl
                 new TableRow(new TableCell(footer, true)),
                 new TableRow(new TableCell(null, true)) { ScaleHeight = true },
             },
+        };
+        return new Scrollable
+        {
+            Border = BorderType.None,
+            ExpandContentWidth = true,
+            ExpandContentHeight = false,
+            Content = content,
         };
     }
 

@@ -18,7 +18,24 @@ namespace SuperHelper;
 
 public sealed partial class SuperHelperControl
 {
+    private static readonly System.Reflection.FieldInfo GrasshopperDocumentInGetField =
+        typeof(Grasshopper.Kernel.GH_Document).GetField(
+            "InGet",
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic);
+
+    private static readonly System.Reflection.FieldInfo GrasshopperDocumentFadeOutField =
+        typeof(Grasshopper.Kernel.GH_Document).GetField(
+            "FadeOut",
+            System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public
+            | System.Reflection.BindingFlags.NonPublic);
+
     private bool _keepGrasshopperVisibleForCommand;
+    private bool _keepGrasshopperVisibleWhileWorkspaceOpen;
+    private Grasshopper.GUI.GH_DocumentEditor _promptDocumentEditor;
+    private bool _restorePromptEditorPending;
 
     public void ResetViewport()
     {
@@ -38,6 +55,13 @@ public sealed partial class SuperHelperControl
         EnsureCommandHistory();
         _viewport?.Viewport.ZoomExtents();
         _viewport?.Refresh();
+        if (_keepGrasshopperVisibleWhileWorkspaceOpen)
+        {
+            // A newly created Rhino document has no useful input view until one
+            // registered view is made active. Prime the embedded view while the
+            // workspace is open so the first GH persistent-data prompt can use it.
+            _viewport?.Activate(focusControl: false);
+        }
     }
 
     private void WireCommandBar()
@@ -349,7 +373,107 @@ public sealed partial class SuperHelperControl
         RhinoApp.CommandPromptChanged -= OnCommandPromptChanged;
         RhinoCommand.BeginCommand -= OnCommandBegan;
         RhinoCommand.EndCommand -= OnCommandEnded;
+        OnWorkspaceHidden();
         _documentEventsSubscribed = false;
+    }
+
+    internal void OnWorkspaceShown()
+    {
+        _keepGrasshopperVisibleWhileWorkspaceOpen = true;
+        _viewport?.Activate(focusControl: false);
+        var editor = Instances.DocumentEditor;
+        if (ReferenceEquals(_promptDocumentEditor, editor))
+        {
+            return;
+        }
+
+        DetachPromptEditor();
+        _promptDocumentEditor = editor;
+        if (_promptDocumentEditor != null)
+        {
+            _promptDocumentEditor.VisibleChanged += OnPromptEditorVisibilityChanged;
+            _promptDocumentEditor.Resize += OnPromptEditorVisibilityChanged;
+        }
+    }
+
+    internal void OnWorkspaceHidden()
+    {
+        _keepGrasshopperVisibleWhileWorkspaceOpen = false;
+        DetachPromptEditor();
+        _restorePromptEditorPending = false;
+    }
+
+    private void DetachPromptEditor()
+    {
+        if (_promptDocumentEditor == null)
+        {
+            return;
+        }
+
+        _promptDocumentEditor.VisibleChanged -= OnPromptEditorVisibilityChanged;
+        _promptDocumentEditor.Resize -= OnPromptEditorVisibilityChanged;
+        _promptDocumentEditor = null;
+    }
+
+    private void OnPromptEditorVisibilityChanged(object sender, EventArgs e)
+    {
+        if (sender is not Grasshopper.GUI.GH_DocumentEditor editor
+            || !_keepGrasshopperVisibleWhileWorkspaceOpen
+            || !IsGrasshopperPromptStartingOrActive()
+            || (editor.Visible && editor.WindowState != WinForms.FormWindowState.Minimized)
+            || _restorePromptEditorPending)
+        {
+            return;
+        }
+
+        _restorePromptEditorPending = true;
+        void RestoreEditorAndViewport()
+        {
+            if (editor.IsDisposed
+                || !_keepGrasshopperVisibleWhileWorkspaceOpen
+                || !IsGrasshopperPromptStartingOrActive())
+            {
+                _restorePromptEditorPending = false;
+                return;
+            }
+
+            try
+            {
+                if (editor.WindowState == WinForms.FormWindowState.Minimized)
+                {
+                    editor.WindowState = WinForms.FormWindowState.Normal;
+                }
+                if (!editor.Visible)
+                {
+                    editor.Show();
+                }
+                editor.Activate();
+                _viewport?.Activate();
+            }
+            finally
+            {
+                // Keep the guard set while Show/WindowState raise their own
+                // visibility and resize notifications.
+                _restorePromptEditorPending = false;
+            }
+        }
+
+        if (Application.Instance != null)
+        {
+            Application.Instance.AsyncInvoke(RestoreEditorAndViewport);
+        }
+        else
+        {
+            RhinoApp.InvokeOnUiThread((Action)RestoreEditorAndViewport);
+        }
+    }
+
+    private static bool IsGrasshopperPromptStartingOrActive()
+    {
+        var document = Instances.ActiveCanvas?.Document;
+        return document != null
+            && (GrasshopperDocumentInGetField?.GetValue(document) is true
+                || GrasshopperDocumentFadeOutField?.GetValue(document) is true);
     }
 
     private void OnRhinoObjectChanged(object sender, RhinoObjectEventArgs e) => _viewport?.Refresh();
@@ -371,6 +495,14 @@ public sealed partial class SuperHelperControl
         {
             _commandPromptLabel.Text = string.IsNullOrWhiteSpace(prompt) ? "Command:" : prompt;
             UpdateCommandOptions(options);
+            if (_keepGrasshopperVisibleWhileWorkspaceOpen
+                && IsGrasshopperPromptStartingOrActive())
+            {
+                // This event is raised by RhinoGet after its input loop exists.
+                // Re-activate here so Set one/many uses the embedded view from
+                // the first point instead of waiting for a main viewport click.
+                _viewport?.Activate();
+            }
         }
 
         if (Application.Instance?.IsUIThread == true)

@@ -1,3 +1,4 @@
+using Eto.Drawing;
 using Eto.Forms;
 using System;
 using System.Collections.Generic;
@@ -28,11 +29,20 @@ internal static class EmbeddedRhinoPanelIds
         FileManager,
         Settings,
     ];
+
+    public static IReadOnlyList<Guid> All { get; } =
+    [
+        Command,
+        Viewport,
+        .. HelpPages,
+    ];
 }
 
 internal static class EmbeddedRhinoPanelContent
 {
     private static readonly Dictionary<Guid, Control> Controls = new();
+
+    public static void Clear() => Controls.Clear();
 
     public static void Set(IReadOnlyDictionary<Guid, Control> controls)
     {
@@ -79,13 +89,41 @@ public abstract class SuperHelperRhinoPanel : Panel
 
     private void FitContent()
     {
-        if (_sizeParent != null && _sizeParent.ClientSize.Width > 0 && _sizeParent.ClientSize.Height > 0 && Size != _sizeParent.ClientSize)
+        if (_sizeParent != null)
         {
-            Size = _sizeParent.ClientSize;
+            FitToContainer(_sizeParent.ClientSize);
         }
-        if (Content != null && ClientSize.Width > 0 && ClientSize.Height > 0 && Content.Size != ClientSize)
+    }
+
+    internal void FitToContainer(Size size)
+    {
+        if (size.Width < 1 || size.Height < 1)
         {
-            Content.Size = ClientSize;
+            return;
+        }
+
+        if (Size != size)
+        {
+            Size = size;
+        }
+        FitNestedPanel(this);
+    }
+
+    private static void FitNestedPanel(Panel panel)
+    {
+        var content = panel.Content;
+        if (content == null || panel.ClientSize.Width < 1 || panel.ClientSize.Height < 1)
+        {
+            return;
+        }
+
+        if (content.Size != panel.ClientSize)
+        {
+            content.Size = panel.ClientSize;
+        }
+        if (content is Panel childPanel)
+        {
+            FitNestedPanel(childPanel);
         }
     }
 

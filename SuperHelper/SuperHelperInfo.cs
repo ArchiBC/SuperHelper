@@ -23,8 +23,11 @@ public class SuperHelperInfo : GH_AssemblyInfo
 partial class SimpleAssemblyPriority
 {
     private const string ToolbarButtonDescription = "SuperHelper workspace";
-    private static readonly GrasshopperPanelHost PanelHost = new(MenuReplacer.Control);
+    private static readonly Lazy<GrasshopperPanelHost> PanelHostFactory =
+        new(() => new GrasshopperPanelHost(MenuReplacer.Control));
     private readonly HashSet<ToolStripButton> _workspaceMenuButtons = [];
+
+    private static GrasshopperPanelHost PanelHost => PanelHostFactory.Value;
 
     protected override int? MenuIndex => 2;
 
@@ -58,6 +61,7 @@ partial class SimpleAssemblyPriority
 
     public static void Hide()
     {
+        MenuReplacer.Control.OnWorkspaceHidden();
         PanelHost.Hide();
         MenuReplacer.Control.OnClosed();
         UseSuperHelperPanel = false;
@@ -67,6 +71,7 @@ partial class SimpleAssemblyPriority
     {
         PanelHost.Show();
         UseSuperHelperPanel = true;
+        MenuReplacer.Control.OnWorkspaceShown();
         RefreshViewport();
     }
 
@@ -79,22 +84,31 @@ partial class SimpleAssemblyPriority
     {
         base.DoWithEditor(editor);
         AttachWorkspaceContextMenu(editor);
+        editor.Shown += Editor_Shown;
+        if (editor.IsHandleCreated)
+        {
+            editor.BeginInvoke((Action)(() => AttachWorkspaceContextMenu(editor)));
+        }
 
         MenuReplacer.Init();
         PanelHost.Attach(editor, SuperHelperPanelWidth, IsSuperHelperOnRight);
         if (UseSuperHelperPanel)
         {
             PanelHost.Show();
+            MenuReplacer.Control.OnWorkspaceShown();
         }
         else
         {
+            MenuReplacer.Control.OnWorkspaceHidden();
             PanelHost.Hide();
         }
 
         editor.FormClosing += (_, _) =>
         {
             SuperHelperPanelWidth = PanelHost.Width;
+            MenuReplacer.Control.OnWorkspaceHidden();
             MenuReplacer.Control.ShutdownWorkspace();
+            editor.Shown -= Editor_Shown;
             DetachWorkspaceContextMenus();
         };
         Rhino.RhinoDoc.EndOpenDocument += RhinoDoc_EndOpenDocument;
@@ -104,28 +118,38 @@ partial class SimpleAssemblyPriority
     private void RhinoDoc_EndSaveDocument(object sender, Rhino.DocumentSaveEventArgs e) => RefreshViewport();
     private void RhinoDoc_EndOpenDocument(object sender, Rhino.DocumentOpenEventArgs e) => RefreshViewport();
 
+    private void Editor_Shown(object sender, EventArgs e)
+    {
+        if (sender is GH_DocumentEditor editor)
+        {
+            AttachWorkspaceContextMenu(editor);
+        }
+    }
+
     private void AttachWorkspaceContextMenu(GH_DocumentEditor editor)
     {
-        var button = Descendants(editor)
+        var buttons = Descendants(editor)
             .OfType<ToolStrip>()
             .SelectMany(strip => strip.Items.OfType<ToolStripButton>())
-            .FirstOrDefault(item => string.Equals(
+            .Where(item => string.Equals(
                 item.ToolTipText,
                 ToolbarButtonDescription,
-                StringComparison.Ordinal));
-        if (button == null || !_workspaceMenuButtons.Add(button))
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        foreach (var button in buttons)
         {
-            return;
+            if (_workspaceMenuButtons.Add(button))
+            {
+                button.MouseDown += ToolbarButton_MouseDown;
+            }
         }
-
-        button.MouseUp += ToolbarButton_MouseUp;
     }
 
     private void DetachWorkspaceContextMenus()
     {
         foreach (var button in _workspaceMenuButtons)
         {
-            button.MouseUp -= ToolbarButton_MouseUp;
+            button.MouseDown -= ToolbarButton_MouseDown;
         }
         _workspaceMenuButtons.Clear();
     }
@@ -142,7 +166,7 @@ partial class SimpleAssemblyPriority
         }
     }
 
-    private static void ToolbarButton_MouseUp(object sender, MouseEventArgs e)
+    private static void ToolbarButton_MouseDown(object sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Right || sender is not ToolStripButton button)
         {
@@ -151,14 +175,41 @@ partial class SimpleAssemblyPriority
 
         var menu = BuildWorkspaceContextMenu();
         menu.Closed += (_, _) => menu.Dispose();
-        menu.Show(button.Owner, button.Owner.PointToClient(Cursor.Position));
+        menu.Show(Cursor.Position);
     }
 
     private static ContextMenuStrip BuildWorkspaceContextMenu()
     {
         var menu = new ContextMenuStrip();
         menu.Items.Add(CreateMenuItem("Open Settings", control => control.OpenWorkspaceSettings()));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(CreateSectionMenuItem("Command", EmbeddedWorkspaceSection.Command));
+        menu.Items.Add(CreateSectionMenuItem("Viewport", EmbeddedWorkspaceSection.Viewport));
+        menu.Items.Add(CreateSectionMenuItem("Help", EmbeddedWorkspaceSection.Help));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(CreateMenuItem("Restore Default Workspace", control => control.RestoreDefaultWorkspace()));
+        menu.Items.Add(CreateMenuItem("Use Current as Default", control => control.UseCurrentWorkspaceAsDefault()));
+        menu.Items.Add(CreateMenuItem("Restore Built-in Workspace", control => control.RestoreBuiltInWorkspace()));
         return menu;
+    }
+
+    private static ToolStripMenuItem CreateSectionMenuItem(string text, EmbeddedWorkspaceSection section)
+    {
+        var control = MenuReplacer.Control;
+        var item = new ToolStripMenuItem(text)
+        {
+            Checked = control.IsWorkspaceSectionVisible(section),
+            CheckOnClick = false,
+        };
+        item.Click += (_, _) =>
+        {
+            EnsureWorkspaceVisible();
+            control = MenuReplacer.Control;
+            var targetVisible = !control.IsWorkspaceSectionVisible(section);
+            control.SetWorkspaceSectionVisible(section, targetVisible);
+            item.Checked = control.IsWorkspaceSectionVisible(section);
+        };
+        return item;
     }
 
     private static ToolStripMenuItem CreateMenuItem(string text, Action<SuperHelperControl> action)
@@ -166,16 +217,21 @@ partial class SimpleAssemblyPriority
         var item = new ToolStripMenuItem(text);
         item.Click += (_, _) =>
         {
-            if (!SuperSetting.Open)
-            {
-                SuperSetting.Open = true;
-            }
-            else
-            {
-                Show();
-            }
+            EnsureWorkspaceVisible();
             action(MenuReplacer.Control);
         };
         return item;
+    }
+
+    private static void EnsureWorkspaceVisible()
+    {
+        if (!SuperSetting.Open)
+        {
+            SuperSetting.Open = true;
+        }
+        else
+        {
+            Show();
+        }
     }
 }
