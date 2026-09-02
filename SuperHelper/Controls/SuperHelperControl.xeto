@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Panel xmlns="http://schema.picoe.ca/eto.forms"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       MinimumSize="280, 300">
+  <Panel x:Name="_workspaceContentHost">
+    <!-- Staging only: these controls are moved into Rhino standard panels after loading. -->
+    <StackLayout x:Name="_sectionStaging" Orientation="Vertical" Spacing="0">
+      <StackLayoutItem Expand="True" HorizontalAlignment="Stretch">
+        <Panel x:Name="_commandSection" MinimumSize="100,50" />
+      </StackLayoutItem>
+      <StackLayoutItem Expand="True" HorizontalAlignment="Stretch">
+        <Panel x:Name="_viewportSection" MinimumSize="100,100" />
+      </StackLayoutItem>
+      <StackLayoutItem Expand="True" HorizontalAlignment="Stretch">
+        <Panel x:Name="_helpSection" MinimumSize="100,100">
+          <TabControl x:Name="_tabs" />
+        </Panel>
+      </StackLayoutItem>
+    </StackLayout>
+  </Panel>
+</Panel>

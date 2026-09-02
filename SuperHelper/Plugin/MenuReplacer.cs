@@ -165,7 +165,7 @@ public abstract class MenuReplacer : GH_DocumentObject
 
     private void Menu_ObjectHelpClickNew(object sender, EventArgs e)
     {
-        SimpleAssemblyPriority.Show();
+        SuperHelperAssemblyPriority.Show();
         SetOneObject(this);
     }
 

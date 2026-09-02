@@ -9,34 +9,48 @@ using System.Threading.Tasks;
 
 namespace SuperHelper;
 
-public sealed partial class SuperHelperControl
+internal sealed class FileManagerPanel : Panel
 {
-    private Control BuildFileManagerPage()
+    private readonly TextBox _directory = new();
+    private readonly CheckBox _openDocument = new()
     {
-        _directoryTextBox.Text = FileManageWorkDirectorey;
-        _openDocumentCheckBox.Checked = OpenDocumentWhenRightClick;
-        _openDocumentCheckBox.CheckedChanged += (_, _) =>
-            OpenDocumentWhenRightClick = _openDocumentCheckBox.Checked == true;
+        Text = "Open Doc",
+        ToolTip = "Open document when right clicking a file.",
+    };
+    private readonly TreeGridView _tree = new();
+    private readonly Slider _rowHeight = new() { MinValue = 20, MaxValue = 150, Value = 55 };
+
+    public FileManagerPanel()
+    {
+        Content = BuildContent();
+    }
+
+    private Control BuildContent()
+    {
+        _directory.Text = SuperHelperPreferences.FileManagerDirectory;
+        _openDocument.Checked = SuperHelperPreferences.OpenDocumentWhenRightClick;
+        _openDocument.CheckedChanged += (_, _) =>
+            SuperHelperPreferences.OpenDocumentWhenRightClick = _openDocument.Checked == true;
 
         var update = new Button { Text = "Update" };
         update.Click += (_, _) =>
         {
-            FileManageWorkDirectorey = _directoryTextBox.Text;
-            RefreshDirectoryTree();
+            SuperHelperPreferences.FileManagerDirectory = _directory.Text;
+            RefreshTree();
         };
 
-        _directoryTree.Border = BorderType.None;
-        _directoryTree.ShowHeader = false;
-        _directoryTree.RowHeight = _fileHeightSlider.Value;
-        _directoryTree.Columns.Add(new GridColumn
+        _tree.Border = BorderType.None;
+        _tree.ShowHeader = false;
+        _tree.RowHeight = _rowHeight.Value;
+        _tree.Columns.Add(new GridColumn
         {
             HeaderText = string.Empty,
             DataCell = new ImageTextCell(0, 1),
             AutoSize = true,
         });
-        _directoryTree.Expanding += (_, e) => PopulateDirectoryItem(e.Item as TreeGridItem);
-        _directoryTree.CellDoubleClick += async (_, e) => await ActivateFileItem(e.Item, asHops: true);
-        _directoryTree.CellClick += async (_, e) =>
+        _tree.Expanding += (_, e) => PopulateDirectoryItem(e.Item as TreeGridItem);
+        _tree.CellDoubleClick += async (_, e) => await ActivateFileItem(e.Item, asHops: true);
+        _tree.CellClick += async (_, e) =>
         {
             if (e.Buttons.HasFlag(MouseButtons.Alternate))
             {
@@ -44,28 +58,30 @@ public sealed partial class SuperHelperControl
                 e.Handled = true;
             }
         };
+        _rowHeight.ValueChanged += (_, _) => _tree.RowHeight = _rowHeight.Value;
+        RefreshTree();
 
-        RefreshDirectoryTree();
-
-        _fileHeightSlider.ValueChanged += (_, _) =>
-            _directoryTree.RowHeight = _fileHeightSlider.Value;
         var header = new TableLayout
         {
             Spacing = new Size(3, 0),
             Rows =
             {
                 new TableRow(
-                    new Label { Text = "Directory:", Font = SystemFonts.Bold(), VerticalAlignment = VerticalAlignment.Center },
-                    new TableCell(_directoryTextBox, true),
+                    new Label
+                    {
+                        Text = "Directory:",
+                        Font = SystemFonts.Bold(),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                    new TableCell(_directory, true),
                     update),
             },
         };
         var footer = new TableLayout
         {
             Spacing = new Size(5, 0),
-            Rows = { new TableRow(_openDocumentCheckBox, new TableCell(_fileHeightSlider, true)) },
+            Rows = { new TableRow(_openDocument, new TableCell(_rowHeight, true)) },
         };
-
         return new TableLayout
         {
             Padding = new Padding(8, 1, 8, 2),
@@ -73,16 +89,19 @@ public sealed partial class SuperHelperControl
             Rows =
             {
                 new TableRow(new TableCell(header, true)),
-                new TableRow(new TableCell(new GroupBox { Padding = 2, Content = _directoryTree }, true)) { ScaleHeight = true },
+                new TableRow(new TableCell(new GroupBox { Padding = 2, Content = _tree }, true))
+                {
+                    ScaleHeight = true,
+                },
                 new TableRow(new TableCell(footer, true)),
             },
         };
     }
 
-    private void RefreshDirectoryTree()
+    private void RefreshTree()
     {
         var store = new TreeGridItemCollection();
-        var directory = _directoryTextBox.Text;
+        var directory = _directory.Text;
         if (Directory.Exists(directory))
         {
             foreach (var path in EnumerateDirectory(directory))
@@ -90,12 +109,14 @@ public sealed partial class SuperHelperControl
                 store.Add(CreateFileItem(path));
             }
         }
-        _directoryTree.DataStore = store;
+        _tree.DataStore = store;
     }
 
     private static TreeGridItem CreateFileItem(string path)
     {
-        var image = File.Exists(path) ? ToEtoImage(global::SuperHelper.Properties.Resources.SuperHelperIcon_24) : null;
+        var image = File.Exists(path)
+            ? EtoImageUtilities.FromBitmap(global::SuperHelper.Properties.Resources.SuperHelperIcon_24)
+            : null;
         var item = new TreeGridItem(new object[] { image, Path.GetFileName(path) }) { Tag = path };
         if (Directory.Exists(path))
         {
@@ -108,7 +129,9 @@ public sealed partial class SuperHelperControl
     {
         try
         {
-            return Directory.GetDirectories(directory).Concat(Directory.GetFiles(directory, "*.gh")).ToArray();
+            return Directory.GetDirectories(directory)
+                .Concat(Directory.GetFiles(directory, "*.gh"))
+                .ToArray();
         }
         catch
         {
@@ -122,8 +145,9 @@ public sealed partial class SuperHelperControl
         {
             return;
         }
-
-        if (item.Children.Count != 1 || item.Children[0] is not TreeGridItem placeholder || placeholder.Tag != null)
+        if (item.Children.Count != 1 ||
+            item.Children[0] is not TreeGridItem placeholder ||
+            placeholder.Tag != null)
         {
             return;
         }
@@ -135,14 +159,14 @@ public sealed partial class SuperHelperControl
         }
     }
 
-    private async Task ActivateFileItem(object itemValue, bool asHops)
+    private static async Task ActivateFileItem(object itemValue, bool asHops)
     {
         if (itemValue is not TreeGridItem item || item.Tag is not string path || !File.Exists(path))
         {
             return;
         }
 
-        if (!asHops && OpenDocumentWhenRightClick)
+        if (!asHops && SuperHelperPreferences.OpenDocumentWhenRightClick)
         {
             Instances.DocumentEditor.ScriptAccess_OpenDocument(path);
             return;

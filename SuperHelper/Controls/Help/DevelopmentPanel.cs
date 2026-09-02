@@ -10,38 +10,54 @@ using System.Linq;
 
 namespace SuperHelper;
 
-public sealed partial class SuperHelperControl
+internal sealed class DevelopmentPanel : Panel
 {
-    private Control BuildDevelopmentPage()
+    private readonly Label _typeInformation = new()
     {
-        _assemblyLocationButton.Click += (_, _) => OpenAssemblyFolder();
-        _assemblyLocationButton.MinimumSize = new Size(50, 24);
-        _assemblyLocationButton.ToolTip = "Open the assembly folder.";
-        var footer = new TableLayout
-        {
-            Rows =
-            {
-                new TableRow(new TableCell(null, true), _assemblyLocationButton, new TableCell(null, true)),
-            },
-        };
-        var content = new TableLayout
-        {
-            Padding = new Padding(8, 6),
-            Spacing = new Size(4, 6),
-            Rows =
-            {
-                new TableRow(new TableCell(_developmentText, true)),
-                new TableRow(new TableCell(footer, true)),
-                new TableRow(new TableCell(null, true)) { ScaleHeight = true },
-            },
-        };
-        return new Scrollable
+        TextAlignment = TextAlignment.Center,
+        Wrap = WrapMode.Word,
+    };
+    private readonly Button _assemblyLocation = new()
+    {
+        MinimumSize = new Size(50, 24),
+        ToolTip = "Open the assembly folder.",
+    };
+
+    public DevelopmentPanel()
+    {
+        _assemblyLocation.Click += (_, _) => OpenAssemblyFolder();
+        Content = new Scrollable
         {
             Border = BorderType.None,
             ExpandContentWidth = true,
             ExpandContentHeight = false,
-            Content = content,
+            Content = new TableLayout
+            {
+                Padding = new Padding(8, 6),
+                Spacing = new Size(4, 6),
+                Rows =
+                {
+                    new TableRow(new TableCell(_typeInformation, true)),
+                    new TableRow(new TableCell(new TableLayout
+                    {
+                        Rows =
+                        {
+                            new TableRow(
+                                new TableCell(null, true),
+                                _assemblyLocation,
+                                new TableCell(null, true)),
+                        },
+                    }, true)),
+                    new TableRow(new TableCell(null, true)) { ScaleHeight = true },
+                },
+            },
         };
+    }
+
+    public void SetObject(GH_DocumentObject obj)
+    {
+        _typeInformation.Text = obj == null ? string.Empty : BuildTypeInformation(obj);
+        _assemblyLocation.Text = obj == null ? string.Empty : FindAssemblyLocation(obj);
     }
 
     private static string BuildTypeInformation(GH_DocumentObject obj)
@@ -69,7 +85,7 @@ public sealed partial class SuperHelperControl
 
     private void OpenAssemblyFolder()
     {
-        var path = _assemblyLocationButton.Text;
+        var path = _assemblyLocation.Text;
         if (string.IsNullOrWhiteSpace(path))
         {
             return;
@@ -78,11 +94,10 @@ public sealed partial class SuperHelperControl
         try
         {
             var directory = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
-            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
             {
-                return;
+                Process.Start(new ProcessStartInfo { FileName = directory, UseShellExecute = true });
             }
-            Process.Start(new ProcessStartInfo { FileName = directory, UseShellExecute = true });
         }
         catch (Exception exception)
         {

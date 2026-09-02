@@ -21,6 +21,7 @@ internal sealed class RhinoWorkViewHost : Panel
     private readonly RhinoDoc _document;
     private readonly Control _control;
     private readonly MethodInfo _refreshMethod;
+    private bool _resizePending;
 
     public RhinoView View { get; }
 
@@ -59,6 +60,8 @@ internal sealed class RhinoWorkViewHost : Panel
                 Activate(focusControl: false);
             }
         };
+        SizeChanged += (_, _) => QueueViewportResize();
+        Load += (_, _) => QueueViewportResize();
     }
 
     public void Activate(bool focusControl = true)
@@ -83,6 +86,42 @@ internal sealed class RhinoWorkViewHost : Panel
         {
             RhinoDoc.ActiveDoc?.Views.Redraw();
         }
+    }
+
+    private void QueueViewportResize()
+    {
+        if (_resizePending)
+        {
+            return;
+        }
+
+        var application = Application.Instance;
+        if (application == null)
+        {
+            ResizeViewport();
+            return;
+        }
+
+        _resizePending = true;
+        application.AsyncInvoke((Action)(() =>
+        {
+            _resizePending = false;
+            ResizeViewport();
+        }));
+    }
+
+    private void ResizeViewport()
+    {
+        if (ClientSize.Width < 1 || ClientSize.Height < 1)
+        {
+            return;
+        }
+
+        if (_control.Size != ClientSize)
+        {
+            _control.Size = ClientSize;
+        }
+        Refresh();
     }
 
     private void SetDefaultPerspectiveProjection()

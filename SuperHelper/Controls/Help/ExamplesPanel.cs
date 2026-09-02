@@ -1,14 +1,53 @@
 using Eto.Drawing;
 using Eto.Forms;
+using Grasshopper.Kernel;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 
 namespace SuperHelper;
 
-public sealed partial class SuperHelperControl
+internal sealed class ExamplesPanel : Panel
 {
-    public void SaveExampleValue()
+    private readonly ObjectSummaryPanel _objectSummary = new();
+    private readonly ObservableCollection<HelpExample> _examples = new();
+    private readonly GridView _grid = new();
+    private readonly Panel _exampleContent = new();
+    private readonly StackLayout _cards = new()
+    {
+        Orientation = Orientation.Vertical,
+        Spacing = 3,
+        HorizontalContentAlignment = HorizontalAlignment.Stretch,
+    };
+    private readonly Slider _heightSlider = new() { MinValue = 20, MaxValue = 150, Value = 55 };
+    private GH_DocumentObject _currentObject;
+    private bool _editMode;
+
+    public ExamplesPanel()
+    {
+        Content = BuildContent();
+    }
+
+    public void SetCurrentObject(GH_DocumentObject obj)
+    {
+        _currentObject = obj;
+        _objectSummary.SetObject(obj);
+    }
+
+    public void SetExamples(GH_DocumentObject obj, IEnumerable<string> paths)
+    {
+        SetCurrentObject(obj);
+        DisposeExamples();
+        _examples.Clear();
+        foreach (var path in paths ?? Enumerable.Empty<string>())
+        {
+            _examples.Add(new HelpExample(path));
+        }
+        RefreshContent();
+    }
+
+    public void Save()
     {
         if (_currentObject == null)
         {
@@ -22,25 +61,31 @@ public sealed partial class SuperHelperControl
         MenuReplacer.SaveUrlExToJson();
     }
 
-    private Control BuildExamplePage()
+    public void Shutdown()
     {
-        _exampleGrid.DataStore = _examples;
-        _exampleGrid.Border = BorderType.None;
-        _exampleGrid.GridLines = GridLines.None;
-        _exampleGrid.Columns.Add(new GridColumn
+        DisposeExamples();
+        _examples.Clear();
+    }
+
+    private Control BuildContent()
+    {
+        _grid.DataStore = _examples;
+        _grid.Border = BorderType.None;
+        _grid.GridLines = GridLines.None;
+        _grid.Columns.Add(new GridColumn
         {
             HeaderText = "Path",
             DataCell = new TextBoxCell(nameof(HelpExample.Path)),
             Editable = true,
             AutoSize = true,
         });
-        _exampleGrid.Columns.Add(new GridColumn
+        _grid.Columns.Add(new GridColumn
         {
             HeaderText = "Name",
             DataCell = new TextBoxCell(nameof(HelpExample.FileName)),
             AutoSize = true,
         });
-        _exampleGrid.CellDoubleClick += async (_, e) =>
+        _grid.CellDoubleClick += async (_, e) =>
         {
             if (e.Item is HelpExample example)
             {
@@ -51,18 +96,12 @@ public sealed partial class SuperHelperControl
         var edit = new Button { Text = "Edit", MinimumSize = new Size(50, 24) };
         edit.Click += (_, _) =>
         {
-            _exampleEditMode = !_exampleEditMode;
-            edit.Text = _exampleEditMode ? "Done" : "Edit";
-            RefreshExampleContent();
+            _editMode = !_editMode;
+            edit.Text = _editMode ? "Done" : "Edit";
+            RefreshContent();
         };
-
-        _exampleHeightSlider.ValueChanged += (_, _) => RefreshExampleContent();
-        RefreshExampleContent();
-        var footer = new TableLayout
-        {
-            Spacing = new Size(5, 0),
-            Rows = { new TableRow(edit, new TableCell(_exampleHeightSlider, true)) },
-        };
+        _heightSlider.ValueChanged += (_, _) => RefreshContent();
+        RefreshContent();
 
         return new TableLayout
         {
@@ -70,16 +109,23 @@ public sealed partial class SuperHelperControl
             Spacing = new Size(3, 3),
             Rows =
             {
-                new TableRow(BuildCurrentObjectSummary()),
-                new TableRow(new TableCell(new GroupBox { Padding = 2, Content = _exampleContent }, true)) { ScaleHeight = true },
-                new TableRow(new TableCell(footer, true)),
+                new TableRow(_objectSummary),
+                new TableRow(new TableCell(new GroupBox { Padding = 2, Content = _exampleContent }, true))
+                {
+                    ScaleHeight = true,
+                },
+                new TableRow(new TableCell(new TableLayout
+                {
+                    Spacing = new Size(5, 0),
+                    Rows = { new TableRow(edit, new TableCell(_heightSlider, true)) },
+                }, true)),
             },
         };
     }
 
-    private void RefreshExampleContent()
+    private void RefreshContent()
     {
-        if (_exampleEditMode)
+        if (_editMode)
         {
             var add = new Button { Text = "Add" };
             var remove = new Button { Text = "Remove" };
@@ -87,42 +133,42 @@ public sealed partial class SuperHelperControl
             add.Click += (_, _) => _examples.Add(new HelpExample());
             remove.Click += (_, _) =>
             {
-                if (_exampleGrid.SelectedItem is not HelpExample example)
+                if (_grid.SelectedItem is not HelpExample example)
                 {
                     return;
                 }
                 _examples.Remove(example);
                 example.Dispose();
             };
-            save.Click += (_, _) => SaveExampleValue();
+            save.Click += (_, _) => Save();
             _exampleContent.Content = new TableLayout
             {
                 Rows =
                 {
-                    new TableRow(new TableCell(_exampleGrid, true)) { ScaleHeight = true },
+                    new TableRow(new TableCell(_grid, true)) { ScaleHeight = true },
                     new TableRow(add, remove, save, new TableCell(null, true)),
                 },
             };
             return;
         }
 
-        _exampleCards.Items.Clear();
+        _cards.Items.Clear();
         foreach (var example in _examples)
         {
-            _exampleCards.Items.Add(BuildExampleCard(example));
+            _cards.Items.Add(BuildCard(example));
         }
         _exampleContent.Content = new Scrollable
         {
             Border = BorderType.None,
             ExpandContentWidth = true,
             ExpandContentHeight = false,
-            Content = _exampleCards,
+            Content = _cards,
         };
     }
 
-    private Control BuildExampleCard(HelpExample example)
+    private Control BuildCard(HelpExample example)
     {
-        var height = _exampleHeightSlider.Value;
+        var height = _heightSlider.Value;
         var thumbnail = new ImageView { Height = height, Width = Math.Max(70, height * 2) };
         var icon = new ImageView { Height = 20, Width = 20 };
         var name = new Label { Font = SystemFonts.Bold(16f), TextAlignment = TextAlignment.Center };
@@ -130,8 +176,8 @@ public sealed partial class SuperHelperControl
         var description = new Label { Wrap = WrapMode.Word, TextAlignment = TextAlignment.Center };
         void Update()
         {
-            thumbnail.Image = ToEtoImage(example.Thumbnail);
-            icon.Image = ToEtoImage(example.Icon);
+            thumbnail.Image = EtoImageUtilities.FromBitmap(example.Thumbnail);
+            icon.Image = EtoImageUtilities.FromBitmap(example.Icon);
             name.Text = example.FileName ?? string.Empty;
             author.Text = example.Author ?? string.Empty;
             description.Text = example.Description ?? string.Empty;
@@ -139,18 +185,6 @@ public sealed partial class SuperHelperControl
         Update();
         example.PropertyChanged += (_, _) => Application.Instance?.AsyncInvoke(Update);
 
-        var cardHeader = new TableLayout
-        {
-            Rows =
-            {
-                new TableRow(
-                    new TableCell(null, true),
-                    icon,
-                    name,
-                    author,
-                    new TableCell(null, true)),
-            },
-        };
         var card = new GroupBox
         {
             Padding = new Padding(4, 3),
@@ -166,10 +200,24 @@ public sealed partial class SuperHelperControl
                         {
                             Rows =
                             {
-                                new TableRow(new TableCell(cardHeader, true)),
+                                new TableRow(new TableCell(new TableLayout
+                                {
+                                    Rows =
+                                    {
+                                        new TableRow(
+                                            new TableCell(null, true),
+                                            icon,
+                                            name,
+                                            author,
+                                            new TableCell(null, true)),
+                                    },
+                                }, true)),
                                 new TableRow(description) { ScaleHeight = true },
                             },
-                        }) { ScaleHeight = true },
+                        })
+                    {
+                        ScaleHeight = true,
+                    },
                 },
             },
         };
@@ -187,18 +235,11 @@ public sealed partial class SuperHelperControl
         return card;
     }
 
-    private void UpdateExamples(IEnumerable<string> paths)
+    private void DisposeExamples()
     {
         foreach (var example in _examples)
         {
             example.Dispose();
         }
-
-        _examples.Clear();
-        foreach (var path in paths ?? Enumerable.Empty<string>())
-        {
-            _examples.Add(new HelpExample(path));
-        }
-        RefreshExampleContent();
     }
 }

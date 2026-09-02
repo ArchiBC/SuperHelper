@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using Eto.Drawing;
 using Eto.Forms;
@@ -71,11 +72,15 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private readonly PixelLayout _layout;
 
+	private readonly List<(object Source, EventInfo Event, Delegate Handler)> _helpStateSubscriptions = new();
+
 	private object _commandCollection;
 
 	private object _viewportCollection;
 
 	private object _helpCollection;
+
+	private HelpWorkspaceState _loadedHelpWorkspaceState;
 
 	private int _committedLeftExtent;
 
@@ -92,6 +97,8 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 	private bool _relayoutPending;
 
 	private bool _contentFitPending;
+
+	private bool _helpStateSavePending;
 
 	public Control Control => (Control)(object)_layout;
 
@@ -138,6 +145,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		_dockSites = Activator.CreateInstance(_dockSitesType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[1] { _document }, null) ?? throw new InvalidOperationException("Unable to create Rhino dock sites.");
 		CreateSiteControls();
 		CreateInitialCollections();
+		AttachHelpStatePersistence();
 		BuildHost();
 	}
 
@@ -408,7 +416,165 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 	{
 		_commandCollection = AddInitialCollection("Command", _commandDockBarId, EmbeddedRhinoPanelIds.Command, new[] { EmbeddedRhinoPanelIds.Command }, 82);
 		_viewportCollection = AddInitialCollection("Viewport", _viewportDockBarId, EmbeddedRhinoPanelIds.Viewport, new[] { EmbeddedRhinoPanelIds.Viewport }, 285);
-		_helpCollection = AddInitialCollection("Help", _helpDockBarId, EmbeddedRhinoPanelIds.FileManager, EmbeddedRhinoPanelIds.HelpPages, 300);
+
+		_loadedHelpWorkspaceState = HelpWorkspaceStateStore.Load();
+		Guid[] restoredPanelIds = _loadedHelpWorkspaceState.PanelIds
+			.Where(IsRestorableHelpPanel)
+			.Distinct()
+			.ToArray();
+		if (restoredPanelIds.Length == 0)
+		{
+			restoredPanelIds = EmbeddedRhinoPanelIds.HelpPages.ToArray();
+		}
+
+		Guid selectedPanelId = restoredPanelIds.Contains(_loadedHelpWorkspaceState.SelectedPanelId)
+			? _loadedHelpWorkspaceState.SelectedPanelId
+			: restoredPanelIds.Contains(EmbeddedRhinoPanelIds.FileManager)
+				? EmbeddedRhinoPanelIds.FileManager
+				: restoredPanelIds[0];
+		_helpCollection = AddInitialCollection("Help", _helpDockBarId, selectedPanelId, restoredPanelIds, 300);
+	}
+
+	private bool IsRestorableHelpPanel(Guid panelId)
+	{
+		return panelId != Guid.Empty
+			&& panelId != EmbeddedRhinoPanelIds.Command
+			&& panelId != EmbeddedRhinoPanelIds.Viewport
+			&& PanelDefinition(panelId) != null;
+	}
+
+	private void AttachHelpStatePersistence()
+	{
+		SubscribeToHelpStateEvent(_helpCollection, "ItemAdded");
+		SubscribeToHelpStateEvent(_helpCollection, "ItemRemoved");
+		SubscribeToHelpStateEvent(_helpCollection, "ItemMoved");
+
+		object state = CollectionState(_helpCollection);
+		if (state != null)
+		{
+			SubscribeToHelpStateEvent(state, "SelectionChanged");
+		}
+	}
+
+	private void SubscribeToHelpStateEvent(object source, string eventName)
+	{
+		EventInfo eventInfo = source.GetType().GetEvent(eventName, InstanceFlags);
+		if (eventInfo?.EventHandlerType == null)
+		{
+			return;
+		}
+
+		Delegate handler = CreateCallbackDelegate(eventInfo.EventHandlerType, QueueSaveHelpWorkspaceState);
+		eventInfo.AddEventHandler(source, handler);
+		_helpStateSubscriptions.Add((source, eventInfo, handler));
+	}
+
+	private static Delegate CreateCallbackDelegate(Type delegateType, Action callback)
+	{
+		MethodInfo invoke = delegateType.GetMethod("Invoke")
+			?? throw new InvalidOperationException($"{delegateType.FullName} is not a delegate type.");
+		ParameterExpression[] parameters = invoke.GetParameters()
+			.Select(parameter => Expression.Parameter(parameter.ParameterType, parameter.Name))
+			.ToArray();
+		MethodInfo callbackInvoke = typeof(Action).GetMethod(nameof(Action.Invoke))
+			?? throw new MissingMethodException(typeof(Action).FullName, nameof(Action.Invoke));
+		MethodCallExpression body = Expression.Call(Expression.Constant(callback), callbackInvoke);
+		return Expression.Lambda(delegateType, body, parameters).Compile();
+	}
+
+	private void QueueSaveHelpWorkspaceState()
+	{
+		if (_disposed || _helpStateSavePending)
+		{
+			return;
+		}
+
+		Application application = Application.Instance;
+		if (application == null)
+		{
+			SaveHelpWorkspaceState();
+			return;
+		}
+
+		_helpStateSavePending = true;
+		application.AsyncInvoke((Action)delegate
+		{
+			_helpStateSavePending = false;
+			if (!_disposed)
+			{
+				SaveHelpWorkspaceState();
+			}
+		});
+	}
+
+	private void SaveHelpWorkspaceState()
+	{
+		if (_helpCollection == null)
+		{
+			return;
+		}
+
+		List<Guid> visiblePanelIds = CollectionPanelIds(_helpCollection).ToList();
+		List<Guid> persistedPanelIds = MergeUnavailablePanelIds(visiblePanelIds);
+		object state = CollectionState(_helpCollection);
+		Guid selectedPanelId = state?.GetType()
+			.GetProperty("SelectedItemId", InstanceFlags)?.GetValue(state) is Guid selected
+			? selected
+			: Guid.Empty;
+
+		_loadedHelpWorkspaceState = new HelpWorkspaceState
+		{
+			PanelIds = persistedPanelIds,
+			SelectedPanelId = selectedPanelId,
+		};
+		HelpWorkspaceStateStore.TrySave(_loadedHelpWorkspaceState);
+	}
+
+	private IEnumerable<Guid> CollectionPanelIds(object collection)
+	{
+		if (!(_collectionType.GetProperty("Items", InstanceFlags)?.GetValue(collection) is IEnumerable items))
+		{
+			yield break;
+		}
+
+		foreach (object item in items)
+		{
+			if (item?.GetType().GetProperty("Id", InstanceFlags)?.GetValue(item) is Guid panelId
+				&& panelId != Guid.Empty)
+			{
+				yield return panelId;
+			}
+		}
+	}
+
+	private List<Guid> MergeUnavailablePanelIds(IReadOnlyCollection<Guid> visiblePanelIds)
+	{
+		List<Guid> result = visiblePanelIds.Distinct().ToList();
+		if (_loadedHelpWorkspaceState == null)
+		{
+			return result;
+		}
+
+		for (int index = 0; index < _loadedHelpWorkspaceState.PanelIds.Count; index++)
+		{
+			Guid panelId = _loadedHelpWorkspaceState.PanelIds[index];
+			if (panelId == Guid.Empty || result.Contains(panelId) || PanelDefinition(panelId) != null)
+			{
+				continue;
+			}
+
+			result.Insert(Math.Min(index, result.Count), panelId);
+		}
+		return result;
+	}
+
+	private void DetachHelpStatePersistence()
+	{
+		foreach ((object source, EventInfo eventInfo, Delegate handler) in _helpStateSubscriptions)
+		{
+			eventInfo.RemoveEventHandler(source, handler);
+		}
+		_helpStateSubscriptions.Clear();
 	}
 
 	private object SectionCollection(EmbeddedWorkspaceSection section)
@@ -499,41 +665,55 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private void FitInitialTopBands()
 	{
-		//IL_000f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0014: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0074: Unknown result type (might be due to invalid IL or missing references)
 		if (_initialBandsFitted)
 		{
 			return;
 		}
-		Size clientSize = ((Container)_layout).ClientSize;
-		if (clientSize.Height >= 180)
+
+		var clientSize = ((Container)_layout).ClientSize;
+		if (clientSize.Height < 180)
 		{
-			object[] array = SiteBands(_sites[DockLocation.Top]).ToArray();
-			if (array.Length > 0)
-			{
-				_initialBandsFitted = true;
-				clientSize = ((Container)_layout).ClientSize;
-				int num = Math.Max(180, clientSize.Height - 16);
-				if (array.Length == 1)
-				{
-					SetProperty(array[0], "Size", (float)num);
-				}
-				else if (array.Length == 2)
-				{
-					SetProperty(array[0], "Size", Math.Max(82f, (float)num * 0.34f));
-					SetProperty(array[1], "Size", Math.Max(100f, (float)num - GetFloat(array[0], "Size")));
-				}
-				else
-				{
-					SetProperty(array[0], "Size", Math.Min(88f, (float)num * 0.18f));
-					SetProperty(array[1], "Size", Math.Max(100f, (float)num * 0.43f));
-					SetProperty(array[^1], "Size", Math.Max(100f, (float)num - array.Take(array.Length - 1).Sum(band => GetFloat(band, "Size"))));
-				}
-				RecalculateSite(DockLocation.Top);
-			}
+			return;
 		}
+
+		var bands = SiteBands(_sites[DockLocation.Top]).ToArray();
+		if (bands.Length == 0)
+		{
+			return;
+		}
+
+		_initialBandsFitted = true;
+		var availableHeight = Math.Max(180, clientSize.Height - 16);
+		if (bands.Length == 1)
+		{
+			SetProperty(bands[0], "Size", (float)availableHeight);
+			RecalculateSite(DockLocation.Top);
+			return;
+		}
+
+		if (bands.Length == 2)
+		{
+			SetProperty(bands[0], "Size", Math.Max(82f, availableHeight * 0.34f));
+			RecalculateSite(DockLocation.Top);
+			SetProperty(
+				bands[1],
+				"Size",
+				Math.Max(40f, availableHeight - GetFloat(bands[0], "Size")));
+			RecalculateSite(DockLocation.Top);
+			return;
+		}
+
+		// With three visible sections Rhino may normalize the first two band
+		// sizes during RecalcLayout. Calculate the third band afterwards from
+		// those committed values so it always fills the actual remaining height.
+		SetProperty(bands[0], "Size", Math.Min(88f, availableHeight * 0.18f));
+		SetProperty(bands[1], "Size", Math.Max(100f, availableHeight * 0.43f));
+		RecalculateSite(DockLocation.Top);
+
+		var fixedHeight = bands.Take(bands.Length - 1)
+			.Sum(band => Math.Max(0f, GetFloat(band, "Size")));
+		SetProperty(bands[^1], "Size", Math.Max(40f, availableHeight - fixedHeight));
+		RecalculateSite(DockLocation.Top);
 	}
 
 	private void Relayout()
@@ -952,6 +1132,8 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 	{
 		if (!_disposed)
 		{
+			SaveHelpWorkspaceState();
+			DetachHelpStatePersistence();
 			_disposed = true;
 			MethodInfo method = _collectionsType.GetMethod("Remove", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[1] { _collectionType }, null);
 			object[] array = _ownedCollections.ToArray();

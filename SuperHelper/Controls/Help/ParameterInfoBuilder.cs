@@ -3,12 +3,13 @@ using Eto.Forms;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Data;
 using Grasshopper.Kernel.Types;
+using Rhino;
 
 namespace SuperHelper;
 
-public sealed partial class SuperHelperControl
+internal static class ParameterInfoBuilder
 {
-    private Control BuildParameterInfo(IGH_Param parameter)
+    public static Control Build(IGH_Param parameter)
     {
         var detail = new Panel
         {
@@ -25,17 +26,10 @@ public sealed partial class SuperHelperControl
             expanded = !expanded;
             toggle.Text = expanded ? "Hide Hierarchy" : "Show Hierarchy";
             detail.Content = expanded
-                ? BuildParameterHierarchy(parameter)
+                ? BuildHierarchy(parameter)
                 : new Label { Text = parameter.InstanceDescription ?? string.Empty, Wrap = WrapMode.Word };
         };
 
-        var toggleBar = new TableLayout
-        {
-            Rows =
-            {
-                new TableRow(new TableCell(null, true), toggle, new TableCell(null, true)),
-            },
-        };
         return new GroupBox
         {
             Padding = new Padding(4, 3),
@@ -44,7 +38,13 @@ public sealed partial class SuperHelperControl
                 Spacing = new Size(3, 3),
                 Rows =
                 {
-                    new TableRow(new TableCell(toggleBar, true)),
+                    new TableRow(new TableCell(new TableLayout
+                    {
+                        Rows =
+                        {
+                            new TableRow(new TableCell(null, true), toggle, new TableCell(null, true)),
+                        },
+                    }, true)),
                     new TableRow(new TableCell(detail, true)),
                     new TableRow(new TableCell(null, true)) { ScaleHeight = true },
                 },
@@ -52,7 +52,7 @@ public sealed partial class SuperHelperControl
         };
     }
 
-    private Control BuildParameterHierarchy(IGH_Param parameter)
+    private static Control BuildHierarchy(IGH_Param parameter)
     {
         var structure = parameter.VolatileData;
         var tree = new TreeGridView
@@ -84,7 +84,10 @@ public sealed partial class SuperHelperControl
                         {
                             itemIndex.ToString(),
                             goo?.ToString() ?? branch[itemIndex]?.ToString() ?? "null",
-                        }) { Tag = goo });
+                        })
+                        {
+                            Tag = goo,
+                        });
                     }
                 }
                 store.Add(branchItem);
@@ -133,6 +136,6 @@ public sealed partial class SuperHelperControl
         HighLightConduit.HighLightObject = item?.Tag is IGH_PreviewData preview
             ? new[] { preview }
             : null;
-        RedrawRhinoViews();
+        RhinoDoc.ActiveDoc?.Views.Redraw();
     }
 }
