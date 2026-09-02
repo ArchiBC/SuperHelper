@@ -1,0 +1,30 @@
+---
+name: SuperHelperR9
+version: 2.0.3.1
+authors:
+- ArchiBC
+description: >
+  A docked Grasshopper helper workspace for Rhino 9.
+
+  The workspace provides embedded Rhino command and viewport panels, native
+  Grasshopper component help, web help, parameter inspection, examples,
+  development information, file management and settings. Help panels can be
+  reordered, extended with external Rhino panels and restored automatically.
+
+  2.0.3.1 R9 Notes:
+
+  Migrated to .NET 10 and the Rhino 9 SDK;
+  Removed the SimpleGrasshopper dependency;
+  Added embedded command, viewport and external panel support;
+  Improved embedded viewport interaction and resizing;
+  Fixed ContextMenuStrip shutdown crashes;
+  Persisted Help panel membership, order and selection.
+url: https://github.com/ArchiBC/SuperHelper
+keywords:
+- grasshopper
+- help
+- panel
+- viewport
+- parameter
+- rhino9
+icon_url: "https://static.food4rhino.com/s3fs-public/styles/thumbnail/public/users-files/qiu-shui/app/superhelpericon256.png"
