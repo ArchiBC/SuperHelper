@@ -34,7 +34,6 @@
 4. 创建并合并 `develop → main` PR。工作流自动读取产品版本，例如 `2.1.1.0` 对应标签 `v2.1.1`。
 5. 检查 Actions 的 package / publish 结果、GitHub Release 附件与公共 Yak 源。
 
-`v2.1.0` / `SuperHelperR9 2.1.0.0` 已发布。这次分支整理不提升产品版本，也不重复发布。
 如果版本标签已指向其他提交，发版会停止并要求提升版本号；不会移动标签或覆盖旧版本。
 
 仓库 Actions Secret `YAK_TOKEN` 使用有权发布 `SuperHelperR9` 的 Rhino Accounts CI Key，已配置的值无需改变。
@@ -49,7 +48,7 @@ $yakOutputRoot = Join-Path $PWD.Path ('artifacts/yak-' + [DateTime]::Now.ToStrin
 ./build/Build-Yak.ps1 -RepositoryRoot $PWD.Path `
   -YakExecutable 'C:\Program Files\Rhino 9\System\yak.exe' `
   -OutputRoot $yakOutputRoot
-./build/Publish-Yak.ps1 -PackageDirectory $yakOutputRoot -ReleaseTag v2.1.0
+./build/Publish-Yak.ps1 -PackageDirectory $yakOutputRoot -ReleaseTag v2.1.1
 ```
 
 第二条脚本默认只做版本、文件哈希及 GHA 内容校验，不联系 GitHub 或 Yak。
