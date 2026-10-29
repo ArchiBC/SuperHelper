@@ -99,6 +99,20 @@ internal sealed class GrasshopperPanelHost
         target.Controls.Add(_hostShell);
         DockOnRight = dockOnRight;
 
+        if (Rhino.Runtime.HostUtils.RunningOnOSX)
+        {
+            // The Mac WinForms bridge resets sizes while attaching native
+            // views. Seed both dimensions after parenting so docking has a
+            // nonzero sidebar and splitter to arrange.
+            _hostShell.Size = new Size(
+                UsableInitialWidth(width, target.ClientSize.Width),
+                Math.Max(1, target.ClientSize.Height));
+            _splitter.Size = new Size(8, Math.Max(1, target.ClientSize.Height));
+            target.PerformLayout();
+            _nativeHost.Size = _hostShell.ClientSize;
+            _hostShell.PerformLayout();
+        }
+
         void refreshBottomInset(object sender, EventArgs args)
         {
             EnsureHostFitsTarget(target);

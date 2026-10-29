@@ -4,7 +4,7 @@ version: $version
 authors:
 - ArchiBC
 description: >
-  A docked Grasshopper helper workspace for Rhino 9 and .NET 10.
+  A docked Grasshopper helper workspace for Rhino 9 and .NET 10 on Windows and macOS.
 
   Includes an interactive Rhino viewport, native command input and history,
   component help, web help, parameter inspection, examples, development

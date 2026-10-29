@@ -59,7 +59,8 @@ internal sealed class RhinoViewportPanel : Panel
             return;
         }
 
-        if (_viewport == null || _viewportDocumentSerial != activeDocument.RuntimeSerialNumber)
+        if (_viewport == null || _viewportDocumentSerial != activeDocument.RuntimeSerialNumber
+            || _viewport.NeedsRecreation)
         {
             Content = null;
             _viewport?.Dispose();
@@ -78,7 +79,14 @@ internal sealed class RhinoViewportPanel : Panel
         }
     }
 
-    public void Activate(bool focusControl = true) => _viewport?.Activate(focusControl);
+    public void Activate(bool focusControl = true)
+    {
+        if (_viewport?.NeedsRecreation == true)
+        {
+            ResetViewport();
+        }
+        _viewport?.Activate(focusControl);
+    }
 
     public void PrepareForCommand() => _keepGrasshopperVisibleForCommand = true;
 
@@ -88,7 +96,7 @@ internal sealed class RhinoViewportPanel : Panel
     {
         Start();
         _keepGrasshopperVisibleWhileWorkspaceOpen = true;
-        _viewport?.Activate(focusControl: false);
+        Activate(focusControl: false);
         var editor = Instances.DocumentEditor;
         if (ReferenceEquals(_promptDocumentEditor, editor))
         {
@@ -129,6 +137,10 @@ internal sealed class RhinoViewportPanel : Panel
         RhinoApp.CommandPromptChanged += OnCommandPromptChanged;
         RhinoCommand.BeginCommand += OnCommandBegan;
         RhinoCommand.EndCommand += OnCommandEnded;
+        if (Rhino.Runtime.HostUtils.RunningOnOSX)
+        {
+            RhinoApp.Idle += OnRhinoIdle;
+        }
         _eventsSubscribed = true;
     }
 
@@ -150,6 +162,7 @@ internal sealed class RhinoViewportPanel : Panel
         RhinoApp.CommandPromptChanged -= OnCommandPromptChanged;
         RhinoCommand.BeginCommand -= OnCommandBegan;
         RhinoCommand.EndCommand -= OnCommandEnded;
+        RhinoApp.Idle -= OnRhinoIdle;
         _eventsSubscribed = false;
     }
 
@@ -190,7 +203,7 @@ internal sealed class RhinoViewportPanel : Panel
             try
             {
                 RestoreEditor(editor);
-                _viewport?.Activate();
+                Activate();
             }
             finally
             {
@@ -220,7 +233,7 @@ internal sealed class RhinoViewportPanel : Panel
             // GH hides its editor before entering the native getter. Restore
             // it here as queued visibility work can wait until the getter ends.
             RestoreEditor(Instances.DocumentEditor);
-            _viewport?.Activate();
+            Activate();
         });
     }
 
@@ -234,12 +247,22 @@ internal sealed class RhinoViewportPanel : Panel
         InvokeOnEtoUi(() =>
         {
             RestoreEditor(Instances.DocumentEditor);
-            _viewport?.Activate();
+            Activate();
         });
     }
 
     private void OnCommandEnded(object sender, RhinoCommandEventArgs e) =>
         _keepGrasshopperVisibleForCommand = false;
+
+    private void OnRhinoIdle(object sender, EventArgs e)
+    {
+        // Reparenting the NSView while GH is opening can retire its original
+        // RhinoView. Recreate only after the native window has settled.
+        if (Loaded && Visible && !RhinoCommand.InCommand() && _viewport?.NeedsRecreation == true)
+        {
+            ResetViewport();
+        }
+    }
 
     private void OnRhinoObjectChanged(object sender, RhinoObjectEventArgs e) => _viewport?.Refresh();
     private void OnRhinoObjectReplaced(object sender, RhinoReplaceObjectEventArgs e) => _viewport?.Refresh();

@@ -18,7 +18,7 @@ $package = $files[0]
 $metadata = Get-Content -LiteralPath $metadataFiles[0].FullName -Raw | ConvertFrom-Json
 $expectedVersion = [version]$metadata.ProjectVersion
 if ($tagVersion.Major -ne $expectedVersion.Major -or $tagVersion.Minor -ne $expectedVersion.Minor -or $tagVersion.Build -ne $expectedVersion.Build -or [Math]::Max(0,$tagVersion.Revision) -ne [Math]::Max(0,$expectedVersion.Revision)) { throw 'Release tag does not match the package version.' }
-if ($package.Name -ne $metadata.PackageFile -or $package.Name -notmatch '^superhelperr9-.*-rh9(?:_\d+)?-win\.yak$') { throw 'Unexpected package identity.' }
+if ($metadata.Platform -ne 'any' -or $package.Name -ne $metadata.PackageFile -or $package.Name -notmatch '^superhelperr9-.*-rh9(?:_\d+)?-any\.yak$') { throw 'Expected a cross-platform Rhino 9 package.' }
 if ((Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash -ne $metadata.PackageSHA256) { throw 'Downloaded package does not match the build metadata.' }
 function Get-PayloadHashes([string]$Path) {
     $archive = [IO.Compression.ZipFile]::OpenRead($Path)

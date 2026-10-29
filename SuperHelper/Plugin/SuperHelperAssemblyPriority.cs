@@ -14,6 +14,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
     private const string ToolbarButtonName = "SuperHelperWorkspaceButton";
     private const string ToolbarButtonDescription = "SuperHelper workspace";
     private const string ViewMenuCommandName = "SuperHelperWorkspaceCommand";
+    private const string ObjectHelpCommandName = "SuperHelperObjectHelpCommand";
     private static readonly Lazy<GrasshopperPanelHost> PanelHostFactory =
         new(() => new GrasshopperPanelHost(MenuReplacer.Control));
     private static SuperHelperAssemblyPriority _instance;
@@ -205,6 +206,19 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
         command.Click -= WorkspaceCommandClick;
         command.Click += WorkspaceCommandClick;
         _workspaceCommands.Add(command);
+
+        if (!viewMenu.DropDownItems.OfType<ToolStripMenuItem>()
+            .Any(item => item.Name == ObjectHelpCommandName))
+        {
+            var help = new ToolStripMenuItem("SuperHelper Component Help")
+            {
+                Name = ObjectHelpCommandName,
+                ShortcutKeys = Keys.F1,
+                ToolTipText = "Show help for the selected component in SuperHelper",
+            };
+            help.Click += (_, _) => MenuReplacer.ShowSelectedObjectHelp();
+            viewMenu.DropDownItems.Insert(viewMenu.DropDownItems.IndexOf(command) + 1, help);
+        }
     }
 
     private static void WorkspaceCommandClick(object sender, EventArgs e) =>
@@ -225,6 +239,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
     private static ContextMenuStrip BuildWorkspaceContextMenu()
     {
         var menu = new ContextMenuStrip();
+        menu.Items.Add(CreateMenuItem("Help for Selected Component", _ => MenuReplacer.ShowSelectedObjectHelp()));
         menu.Items.Add(CreateMenuItem("Open Settings", control => control.OpenWorkspaceSettings()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(CreateSectionMenuItem("Command", EmbeddedWorkspaceSection.Command));

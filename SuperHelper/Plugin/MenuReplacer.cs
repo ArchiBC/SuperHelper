@@ -51,7 +51,9 @@ public abstract class MenuReplacer : GH_DocumentObject
         Instances.ActiveCanvas.CanvasPostPaintObjects += ActiveCanvas_PostPaintObjects;
         Instances.ActiveCanvas.DocumentChanged += ActiveCanvas_DocumentChanged;
 
-        return ExchangeMethod(
+        // The method-descriptor layout used by the legacy hook is not an
+        // ARM64 contract. macOS uses the explicit help command instead.
+        return Rhino.Runtime.HostUtils.RunningOnOSX || ExchangeMethod(
             typeof(GH_DocumentObject).GetRuntimeMethods().First(method => method.Name.Contains("Menu_ObjectHelpClick")),
             typeof(MenuReplacer).GetRuntimeMethods().First(method => method.Name.Contains(nameof(Menu_ObjectHelpClickNew))));
     }
@@ -167,6 +169,17 @@ public abstract class MenuReplacer : GH_DocumentObject
     {
         SuperHelperAssemblyPriority.Show();
         SetOneObject(this);
+    }
+
+    internal static void ShowSelectedObjectHelp()
+    {
+        var obj = Instances.ActiveCanvas?.Document?.SelectedObjects()
+            .OfType<GH_DocumentObject>().LastOrDefault() ?? Control.CurrentObject;
+        if (obj != null)
+        {
+            SuperHelperAssemblyPriority.Show();
+            SetOneObject(obj);
+        }
     }
 
     private static void SetOneObject(GH_DocumentObject obj)

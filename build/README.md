@@ -24,7 +24,7 @@
 发版必须通过 `develop → main` PR 合并。直接推送到 `main` 只会构建，不会发版。
 构建和发布都固定到该 PR 的合并提交 SHA，后续分支移动不会改变发布内容。
 
-仅支持 net10.0、版本一致的正式 RhinoCommon/Grasshopper 9.x，生成 `rh9_0-win` 分发包。
+支持 net10.0、版本一致的正式 RhinoCommon/Grasshopper 9.x，生成 Windows / macOS 通用的 `rh9_0-any` 分发包。发布前必须通过 Windows 打包校验和 macOS Release 构建。
 
 ## 发版步骤
 
@@ -50,6 +50,24 @@ $yakOutputRoot = Join-Path $PWD.Path ('artifacts/yak-' + [DateTime]::Now.ToStrin
   -OutputRoot $yakOutputRoot
 ./build/Publish-Yak.ps1 -PackageDirectory $yakOutputRoot -ReleaseTag v2.1.1
 ```
+
+macOS 使用 Rhino 自带的 Yak，其他参数相同：
+
+```powershell
+./build/Build-Yak.ps1 -RepositoryRoot $PWD.Path `
+  -YakExecutable '/Applications/Rhino 9.app/Contents/Resources/bin/yak' `
+  -OutputRoot (Join-Path $PWD.Path 'artifacts/yak-mac') -ReleaseTag v2.1.2
+```
+
+## Rhino 实机回归
+
+构建或安装插件后重启 Rhino，打开独立测试模型并启动 Grasshopper。运行 Rhino 的 `_-RunPythonScript`，选择仓库中的 `build/Test-RhinoCompatibility.py`。脚本使用 Rhino 自带的 IronPython，不需要额外 Python 依赖；在 `artifacts/rhino-compatibility.json` 保存环境、程序集版本及逐项结果。
+
+回归覆盖侧栏尺寸、交互视口及活动状态、原生命令镜像、七个帮助页、区块显示切换、左右停靠、隐藏重开、组件帮助命令/F1、参数及开发信息、命令建点和文件列表。脚本会切换到临时 GH 文档，最后恢复原文档，并删除命令测试创建的点。鼠标取点、拖拽分隔条和窗口缩放仍需手工检查。
+
+2026-10-29 实测：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402 / Rhino 自带 .NET 10.0.2，Yak 安装后自动加载，30 项检查通过，包括本地 GH 示例解析和空闲时的原生视口恢复。界面自动化读取 Rhino 窗口超时，鼠标取点和拖拽未纳入本次通过项。
+
+macOS 组件帮助通过 View → SuperHelper Component Help、F1 或工具栏右键菜单的 Help for Selected Component 打开；Auto Target 也会随选择更新。GH 自带右键 Help 保留原生行为。Mac 不执行旧的 .NET 方法内存替换。
 
 第二条脚本默认只做版本、文件哈希及 GHA 内容校验，不联系 GitHub 或 Yak。
 自动发布任务额外传入 `-Publish -CreateRelease -TargetCommit <合并提交完整 SHA>`；通过全部包检查后才创建 Release。

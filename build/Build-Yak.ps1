@@ -54,11 +54,11 @@ $manifest = [regex]::Replace($manifest, '(?m)^icon_url:.*$', 'icon: icon.png')
 [IO.File]::WriteAllText((Join-Path $packageRoot 'manifest.yml'),$manifest,[Text.UTF8Encoding]::new($false))
 Push-Location $packageRoot
 try {
-    & $YakExecutable build --platform win
+    & $YakExecutable build --platform any
     if ($LASTEXITCODE -ne 0) { throw 'Yak build failed.' }
 } finally { Pop-Location }
 $packages = @(Get-ChildItem -LiteralPath $packageRoot -Filter '*.yak' -File)
-if ($packages.Count -ne 1 -or $packages[0].Name -notmatch '^superhelperr9-.*-rh9(?:_\d+)?-win\.yak$') { throw 'Expected exactly one Windows Rhino 9 Yak package.' }
+if ($packages.Count -ne 1 -or $packages[0].Name -notmatch '^superhelperr9-.*-rh9(?:_\d+)?-any\.yak$') { throw 'Expected exactly one cross-platform Rhino 9 Yak package.' }
 $archive = [IO.Compression.ZipFile]::OpenRead($packages[0].FullName)
 try {
     if ($archive.Entries | Where-Object { $_.FullName -match '(^|/)(RhinoCommon|Grasshopper|GH_IO|Rhino\.UI|Eto|Eto\.Serialization\.Xaml|Portable\.Xaml)\.dll$' }) { throw 'Do not package host-provided SDK DLLs.' }
@@ -69,7 +69,7 @@ try {
     if ($insideHash -ne (Get-FileHash -LiteralPath $assemblyPath -Algorithm SHA256).Hash) { throw 'The package GHA does not match this build.' }
     $entries = @($archive.Entries.FullName)
 } finally { $archive.Dispose() }
-$result = [pscustomobject]@{ProjectVersion=$projectVersion;PackageFile=$packages[0].Name;Package=$packages[0].FullName;Version=$version;SdkVersion=$refs[0].Version;Platform='win';GhaSHA256=$insideHash;PackageSHA256=(Get-FileHash -LiteralPath $packages[0].FullName -Algorithm SHA256).Hash;Entries=$entries;Published=$false}
+$result = [pscustomobject]@{ProjectVersion=$projectVersion;PackageFile=$packages[0].Name;Package=$packages[0].FullName;Version=$version;SdkVersion=$refs[0].Version;Platform='any';GhaSHA256=$insideHash;PackageSHA256=(Get-FileHash -LiteralPath $packages[0].FullName -Algorithm SHA256).Hash;Entries=$entries;Published=$false}
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputRoot 'package-result.json') -Encoding utf8
 if ($env:GITHUB_OUTPUT) {
     Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ('release_tag=v' + $version) -Encoding utf8

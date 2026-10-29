@@ -66,7 +66,7 @@ internal sealed class RhinoCommandMirrorHost : Panel
                 dockBarType,
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                 binder: null,
-                args: new object[] { ResolveWindowRuntimeSerialNumber(assembly, document) },
+                args: new object[] { RhinoWindowRuntime.SerialNumber(assembly, document) },
                 culture: null);
             if (dockBar is not Control dockBarControl)
             {
@@ -145,26 +145,6 @@ internal sealed class RhinoCommandMirrorHost : Panel
             UnsubscribeEvents();
         }
         base.Dispose(disposing);
-    }
-
-    private static uint ResolveWindowRuntimeSerialNumber(Assembly assembly, RhinoDoc document)
-    {
-        if (!Rhino.Runtime.HostUtils.RunningOnOSX)
-        {
-            return 0;
-        }
-
-        var mapType = assembly.GetType(
-            "Rhino.UI.Internal.TabPanels.MRDocumentModelWindowControllerMap",
-            throwOnError: false);
-        var method = mapType?.GetMethod(
-            "TryGetRuntimeSerialNumber",
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null,
-            new[] { typeof(uint), typeof(uint).MakeByRefType() },
-            modifiers: null);
-        var arguments = new object[] { document.RuntimeSerialNumber, 0u };
-        return method?.Invoke(null, arguments) is true ? (uint)arguments[1] : 0u;
     }
 
     private static void SetHistoryDocument(Type dockBarType, object dockBar, uint documentSerialNumber)

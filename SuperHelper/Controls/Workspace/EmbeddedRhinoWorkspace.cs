@@ -155,7 +155,13 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		EmbeddedRhinoPanelContent.Clear();
 		RegisterSuperHelperPanels();
 		EmbeddedRhinoPanelContent.Set(contents);
-		_dockSites = Activator.CreateInstance(_dockSitesType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[1] { _document }, null) ?? throw new InvalidOperationException("Unable to create Rhino dock sites.");
+		// On Mac the RhinoDoc constructor leaves the window serial at zero,
+		// so dock bars cannot resolve their placement when added to a band.
+		object dockSitesOwner = Rhino.Runtime.HostUtils.RunningOnOSX
+			? RhinoWindowRuntime.SerialNumber(_rhinoUiAssembly, _document)
+			: (object)_document;
+		_dockSites = Activator.CreateInstance(_dockSitesType, InstanceFlags, null, new[] { dockSitesOwner }, null)
+			?? throw new InvalidOperationException("Unable to create Rhino dock sites.");
 		CreateSiteControls();
 		CreateInitialCollections();
 		AttachHelpStatePersistence();

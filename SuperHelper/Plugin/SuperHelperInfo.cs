@@ -12,5 +12,5 @@ public sealed class SuperHelperInfo : GH_AssemblyInfo
     public override Guid Id => new("A71D5B0A-9D5B-4E27-8933-BB83CB68066D");
     public override string AuthorName => "ArchiBC";
     public override string AuthorContact => "Archi-bc@outlook.com";
-    public override string Version => "2.1.1.0";
+    public override string Version => "2.1.2.0";
 }
