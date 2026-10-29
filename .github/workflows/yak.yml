@@ -3,6 +3,7 @@ name: Rhino 9 Yak package
 on:
   workflow_dispatch:
   push:
+    branches: [main, develop]
     paths:
       - '.github/workflows/yak.yml'
       - 'build/**'
@@ -10,20 +11,14 @@ on:
       - 'YAK/manifest-rh9.yml'
       - 'LICENSE'
   pull_request:
-    paths:
-      - '.github/workflows/yak.yml'
-      - 'build/**'
-      - 'SuperHelper/**'
-      - 'YAK/manifest-rh9.yml'
-      - 'LICENSE'
-  release:
-    types: [published]
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: read
 
 concurrency:
-  group: yak-${{ github.event_name }}-${{ github.event.release.tag_name || github.ref }}
+  group: yak-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -32,14 +27,20 @@ defaults:
 
 jobs:
   package:
-    if: github.event_name != 'release' || !github.event.release.prerelease
+    if: >-
+      github.event_name != 'pull_request' || github.event.action != 'closed' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == 'main' &&
+       github.event.pull_request.head.ref == 'develop' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: windows-latest
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      release_tag: ${{ steps.package.outputs.release_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         id: dotnet
@@ -60,13 +61,13 @@ jobs:
           Invoke-WebRequest -Uri 'https://files.mcneel.com/yak/tools/0.19.1/win-x64/yak.exe' -OutFile (Join-Path $dir 'yak.exe')
       - name: Restore, build and validate package
         id: package
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          ./build/Build-Yak.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE `
-            -YakExecutable (Join-Path $env:RUNNER_TEMP 'yak-cli/yak.exe') `
-            -OutputRoot (Join-Path $env:RUNNER_TEMP 'superhelper-yak') `
-            -ReleaseTag $env:RELEASE_TAG
+          $parameters = @{
+            RepositoryRoot = $env:GITHUB_WORKSPACE
+            YakExecutable = Join-Path $env:RUNNER_TEMP 'yak-cli/yak.exe'
+            OutputRoot = Join-Path $env:RUNNER_TEMP 'superhelper-yak'
+          }
+          ./build/Build-Yak.ps1 @parameters
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         id: upload
         with:
@@ -76,7 +77,13 @@ jobs:
             ${{ steps.package.outputs.metadata_path }}
           if-no-files-found: error
   publish:
-    if: github.repository == 'ArchiBC/SuperHelper' && github.event_name == 'release' && !github.event.release.prerelease
+    if: >-
+      github.repository == 'ArchiBC/SuperHelper' &&
+      github.event_name == 'pull_request' && github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.ref == 'develop' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     needs: package
     runs-on: windows-latest
     permissions:
@@ -89,7 +96,7 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:YAK_TOKEN)) { throw 'Configure repository secret YAK_TOKEN.' }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
           persist-credentials: false
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
@@ -104,12 +111,20 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP 'yak-cli'
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
           Invoke-WebRequest -Uri 'https://files.mcneel.com/yak/tools/0.19.1/win-x64/yak.exe' -OutFile (Join-Path $dir 'yak.exe')
-      - name: Publish the validated file
+      - name: Create release and publish the validated file
         env:
           YAK_TOKEN: ${{ secrets.YAK_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ needs.package.outputs.release_tag }}
+          RELEASE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          ./build/Publish-Yak.ps1 -PackageDirectory (Join-Path $env:RUNNER_TEMP 'yak-artifact') `
-            -ReleaseTag $env:RELEASE_TAG -Repository $env:GITHUB_REPOSITORY `
-            -YakExecutable (Join-Path $env:RUNNER_TEMP 'yak-cli/yak.exe') -Publish
+          $parameters = @{
+            PackageDirectory = Join-Path $env:RUNNER_TEMP 'yak-artifact'
+            ReleaseTag = $env:RELEASE_TAG
+            Repository = $env:GITHUB_REPOSITORY
+            YakExecutable = Join-Path $env:RUNNER_TEMP 'yak-cli/yak.exe'
+            TargetCommit = $env:RELEASE_COMMIT
+            CreateRelease = $true
+            Publish = $true
+          }
+          ./build/Publish-Yak.ps1 @parameters

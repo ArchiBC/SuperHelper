@@ -72,6 +72,7 @@ try {
 $result = [pscustomobject]@{ProjectVersion=$projectVersion;PackageFile=$packages[0].Name;Package=$packages[0].FullName;Version=$version;SdkVersion=$refs[0].Version;Platform='win';GhaSHA256=$insideHash;PackageSHA256=(Get-FileHash -LiteralPath $packages[0].FullName -Algorithm SHA256).Hash;Entries=$entries;Published=$false}
 $result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputRoot 'package-result.json') -Encoding utf8
 if ($env:GITHUB_OUTPUT) {
+    Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ('release_tag=v' + $version) -Encoding utf8
     Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ('package_path=' + $packages[0].FullName) -Encoding utf8
     Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value ('metadata_path=' + (Join-Path $OutputRoot 'package-result.json')) -Encoding utf8
 }

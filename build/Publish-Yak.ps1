@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory)][string]$ReleaseTag,
     [string]$Repository = 'ArchiBC/SuperHelper',
     [string]$YakExecutable,
+    [string]$TargetCommit,
+    [switch]$CreateRelease,
     [switch]$Publish
 )
 $ErrorActionPreference = 'Stop'
@@ -36,9 +38,13 @@ Write-Output ('Validated package: ' + $package.Name)
 if (-not $Publish) { Write-Output 'Validation only; GitHub and Yak were not contacted.'; return }
 if ([string]::IsNullOrWhiteSpace($env:YAK_TOKEN) -or [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { throw 'Both YAK_TOKEN and GH_TOKEN are required for publishing.' }
 if (-not (Test-Path -LiteralPath $YakExecutable)) { throw 'Standalone Yak executable is missing.' }
-$releaseJson = & gh api ('repos/' + $Repository + '/releases/tags/' + $ReleaseTag)
-if ($LASTEXITCODE -ne 0) { throw 'Failed to read the published GitHub release.' }
-$release = $releaseJson | ConvertFrom-Json
+if ($CreateRelease) {
+    $release = & (Join-Path $PSScriptRoot 'New-GitHubRelease.ps1') -ReleaseTag $ReleaseTag -TargetCommit $TargetCommit -Repository $Repository
+} else {
+    $releaseJson = & gh api ('repos/' + $Repository + '/releases/tags/' + $ReleaseTag)
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to read the published GitHub release.' }
+    $release = $releaseJson | ConvertFrom-Json
+}
 if ($release.draft -or $release.prerelease) { throw 'Only published stable releases can be sent to Yak.' }
 $existing = @($release.assets | Where-Object name -EQ $package.Name)
 $publishPath = $package.FullName
