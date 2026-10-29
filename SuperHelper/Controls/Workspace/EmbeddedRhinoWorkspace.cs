@@ -92,6 +92,14 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private bool _disposed;
 
+	private bool _hostLoaded;
+
+	private bool _layoutInProgress;
+
+	private bool _fitBandsPending;
+
+	private int _layoutGeneration;
+
 	private bool _initialBandsFitted;
 
 	private bool _relayoutPending;
@@ -101,6 +109,11 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 	private bool _helpStateSavePending;
 
 	public Control Control => (Control)(object)_layout;
+
+	private bool CanUpdateLayout => !_disposed && _hostLoaded && !_layout.IsDisposed
+		&& _siteControls.Values.All(control => !control.IsDisposed);
+
+	private bool IsCurrentLayout(int generation) => generation == _layoutGeneration && CanUpdateLayout;
 
 	public int SelectedHelpIndex
 	{
@@ -244,6 +257,11 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	public bool IsSectionVisible(EmbeddedWorkspaceSection section)
 	{
+		if (_disposed)
+		{
+			return false;
+		}
+
 		object obj = SectionCollection(section);
 		if (obj == null)
 		{
@@ -484,7 +502,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private void QueueSaveHelpWorkspaceState()
 	{
-		if (_disposed || _helpStateSavePending)
+		if (_disposed || _layout.IsDisposed || _helpStateSavePending)
 		{
 			return;
 		}
@@ -496,14 +514,16 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			return;
 		}
 
+		int generation = _layoutGeneration;
 		_helpStateSavePending = true;
 		application.AsyncInvoke((Action)delegate
 		{
-			_helpStateSavePending = false;
-			if (!_disposed)
+			if (generation != _layoutGeneration || _disposed || _layout.IsDisposed)
 			{
-				SaveHelpWorkspaceState();
+				return;
 			}
+			_helpStateSavePending = false;
+			SaveHelpWorkspaceState();
 		});
 	}
 
@@ -652,20 +672,38 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		{
 			_layout.Add(value, 0, 0);
 		}
-		((Control)_layout).SizeChanged += delegate
+		_layout.SizeChanged += OnHostSizeChanged;
+		_layout.Load += OnHostLoaded;
+		_layout.UnLoad += OnHostUnloaded;
+	}
+
+	private void OnHostSizeChanged(object sender, EventArgs e) => QueueRelayout();
+
+	private void OnHostLoaded(object sender, EventArgs e)
+	{
+		if (_disposed)
 		{
-			Relayout();
-		};
-		((Control)_layout).Load += delegate
-		{
-			FitInitialTopBands();
-			Relayout();
-		};
+			return;
+		}
+		_hostLoaded = true;
+		QueueRelayoutAndFitBands();
+	}
+
+	private void OnHostUnloaded(object sender, EventArgs e) => InvalidateLayoutCallbacks();
+
+	private void InvalidateLayoutCallbacks()
+	{
+		_hostLoaded = false;
+		_layoutGeneration++;
+		_relayoutPending = false;
+		_contentFitPending = false;
+		_helpStateSavePending = false;
+		_fitBandsPending = false;
 	}
 
 	private void FitInitialTopBands()
 	{
-		if (_initialBandsFitted)
+		if (!CanUpdateLayout || _initialBandsFitted)
 		{
 			return;
 		}
@@ -717,6 +755,49 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 	}
 
 	private void Relayout()
+	{
+		if (!CanUpdateLayout)
+		{
+			return;
+		}
+		if (_layoutInProgress)
+		{
+			QueueRelayout();
+			return;
+		}
+
+		int generation = _layoutGeneration;
+		_layoutInProgress = true;
+		try
+		{
+			if (_fitBandsPending)
+			{
+				_fitBandsPending = false;
+				_initialBandsFitted = false;
+				NormalizeTopBandOrder();
+				FitInitialTopBands();
+			}
+			if (IsCurrentLayout(generation))
+			{
+				RelayoutCore();
+			}
+		}
+		catch (Exception exception) when (!IsCurrentLayout(generation) && Unwrap(exception) is ObjectDisposedException)
+		{
+			// Native layout can pump a close/unload event before returning.
+		}
+		catch (Exception exception)
+		{
+			RhinoApp.WriteLine($"SuperHelper workspace layout failed (generation {generation}): {Unwrap(exception)}");
+			throw;
+		}
+		finally
+		{
+			_layoutInProgress = false;
+		}
+	}
+
+	private void RelayoutCore()
 	{
 		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
 		//IL_000c: Unknown result type (might be due to invalid IL or missing references)
@@ -775,7 +856,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private void QueueVisiblePanelContentFit()
 	{
-		if (_contentFitPending)
+		if (!CanUpdateLayout || _contentFitPending)
 		{
 			return;
 		}
@@ -787,9 +868,14 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			return;
 		}
 
+		int generation = _layoutGeneration;
 		_contentFitPending = true;
 		application.AsyncInvoke((Action)delegate
 		{
+			if (!IsCurrentLayout(generation))
+			{
+				return;
+			}
 			_contentFitPending = false;
 			FitVisiblePanelContents();
 		});
@@ -797,6 +883,10 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private void FitVisiblePanelContents()
 	{
+		if (!CanUpdateLayout)
+		{
+			return;
+		}
 		foreach (EmbeddedWorkspaceSection section in new[]
 		{
 			EmbeddedWorkspaceSection.Command,
@@ -925,16 +1015,26 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private void QueueRelayout()
 	{
-		if (_relayoutPending)
+		if (!CanUpdateLayout || _relayoutPending)
 		{
 			return;
 		}
+		int generation = _layoutGeneration;
 		_relayoutPending = true;
 		Application instance = Application.Instance;
-		if (instance != null)
+		if (instance == null)
+		{
+			_relayoutPending = false;
+			Relayout();
+		}
+		else
 		{
 			instance.AsyncInvoke((Action)delegate
 			{
+				if (!IsCurrentLayout(generation))
+				{
+					return;
+				}
 				_relayoutPending = false;
 				Relayout();
 			});
@@ -943,21 +1043,8 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private void QueueRelayoutAndFitBands()
 	{
-		_initialBandsFitted = false;
-		Application instance = Application.Instance;
-		if (instance == null)
-		{
-			NormalizeTopBandOrder();
-			FitInitialTopBands();
-			Relayout();
-			return;
-		}
-		instance.AsyncInvoke((Action)delegate
-		{
-			NormalizeTopBandOrder();
-			FitInitialTopBands();
-			Relayout();
-		});
+		_fitBandsPending = true;
+		QueueRelayout();
 	}
 
 	private void NormalizeTopBandOrder()
@@ -1120,7 +1207,16 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private void RecalculateSite(DockLocation location)
 	{
-		((object)_siteControls[location]).GetType().GetMethod("RecalcLayout", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.Invoke(_siteControls[location], null);
+		if (!CanUpdateLayout || !_siteControls.TryGetValue(location, out Control control)
+			|| !_sites.TryGetValue(location, out object site))
+		{
+			return;
+		}
+		if (!ReferenceEquals(_dockSiteType.GetProperty("Control", InstanceFlags)?.GetValue(site), control))
+		{
+			return;
+		}
+		control.GetType().GetMethod("RecalcLayout", InstanceFlags)?.Invoke(control, null);
 	}
 
 	private object RhinoDockLocation(DockLocation location)
@@ -1130,19 +1226,60 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	public void Dispose()
 	{
-		if (!_disposed)
+		if (_disposed)
 		{
-			SaveHelpWorkspaceState();
-			DetachHelpStatePersistence();
-			_disposed = true;
+			return;
+		}
+
+		// Retire callbacks before removing any native collection: removal can
+		// synchronously raise SizeChanged or flush already queued layout work.
+		_disposed = true;
+		InvalidateLayoutCallbacks();
+		_layout.SizeChanged -= OnHostSizeChanged;
+		_layout.Load -= OnHostLoaded;
+		_layout.UnLoad -= OnHostUnloaded;
+		DetachHelpStatePersistence();
+		try
+		{
+			if (!_layout.IsDisposed && _siteControls.Values.All(control => !control.IsDisposed))
+			{
+				SaveHelpWorkspaceState();
+				foreach (Control control in _siteControls.Values)
+				{
+					_layout.Remove(control);
+				}
+			}
 			MethodInfo method = _collectionsType.GetMethod("Remove", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[1] { _collectionType }, null);
 			object[] array = _ownedCollections.ToArray();
 			foreach (object obj in array)
 			{
 				method?.Invoke(null, new object[1] { obj });
 			}
+		}
+		finally
+		{
 			_ownedCollections.Clear();
-			_dockSitesType.GetMethod("Dispose", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.Invoke(_dockSites, null);
+			// TabPanelDockSites.Dispose broadcasts a window-wide disposal. On
+			// Windows our private sites share serial 0 with Rhino's main window;
+			// releasing them must not dispose unrelated Rhino panel states.
+			foreach (Control control in _siteControls.Values)
+			{
+				if (!control.IsDisposed)
+				{
+					control.Dispose();
+				}
+			}
+			foreach (string member in new[] { "_left", "_right", "_top", "_bottom" })
+			{
+				_dockSitesType.GetField(member, InstanceFlags)?.SetValue(_dockSites, null);
+			}
+			_siteControls.Clear();
+			_sites.Clear();
+			_commandCollection = _viewportCollection = _helpCollection = null;
+			if (!_layout.IsDisposed)
+			{
+				_layout.Dispose();
+			}
 		}
 	}
 

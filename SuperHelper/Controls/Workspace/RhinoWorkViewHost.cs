@@ -90,7 +90,7 @@ internal sealed class RhinoWorkViewHost : Panel
 
     private void QueueViewportResize()
     {
-        if (_resizePending)
+        if (IsDisposed || _control.IsDisposed || _resizePending)
         {
             return;
         }
@@ -112,7 +112,7 @@ internal sealed class RhinoWorkViewHost : Panel
 
     private void ResizeViewport()
     {
-        if (ClientSize.Width < 1 || ClientSize.Height < 1)
+        if (IsDisposed || _control.IsDisposed || ClientSize.Width < 1 || ClientSize.Height < 1)
         {
             return;
         }

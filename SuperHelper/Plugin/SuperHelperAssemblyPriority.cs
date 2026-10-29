@@ -120,8 +120,10 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
         {
             SuperHelperPanelWidth = PanelHost.Width;
             MenuReplacer.Control.OnWorkspaceHidden();
-            MenuReplacer.Control.ShutdownWorkspace();
         };
+        // GH can cancel FormClosing to hide its editor. Keep its workspace
+        // alive until the form really closes so reopening can reuse it.
+        editor.FormClosed += (_, _) => MenuReplacer.Control.ShutdownWorkspace();
         Rhino.RhinoDoc.EndOpenDocument += (_, _) => RefreshViewport();
         Rhino.RhinoDoc.EndSaveDocument += (_, _) => RefreshViewport();
     }

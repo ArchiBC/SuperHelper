@@ -2,7 +2,7 @@
   "profiles": {
     "SuperHelper": {
       "commandName": "Executable",
-      "executablePath": "C:\\Program Files\\Rhino 9 WIP\\System\\Rhino.exe",
+      "executablePath": "C:\\Program Files\\Rhino 9\\System\\Rhino.exe",
       "commandLineArgs": "/netcore /runscript=\"_Grasshopper\"",
       "environmentVariables": {
         "RHINO_PACKAGE_DIRS": "$(ProjectDir)$(OutputPath)\\"
@@ -10,7 +10,7 @@
     },
     "Work": {
       "commandName": "Executable",
-      "executablePath": "C:\\Program Files\\Rhino 9 WIP\\System\\Rhino.exe",
+      "executablePath": "C:\\Program Files\\Rhino 9\\System\\Rhino.exe",
       "commandLineArgs": "/netcore /runscript=\"_Grasshopper\"",
       "environmentVariables": {
         "RHINO_PACKAGE_DIRS": "$(ProjectDir)$(OutputPath)\\"

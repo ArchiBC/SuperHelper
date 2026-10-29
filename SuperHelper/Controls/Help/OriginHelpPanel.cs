@@ -6,7 +6,6 @@ namespace SuperHelper;
 internal sealed class OriginHelpPanel : Panel
 {
     private readonly WebView _webView = new();
-    private long _revision;
 
     public OriginHelpPanel()
     {
@@ -27,8 +26,9 @@ internal sealed class OriginHelpPanel : Panel
             return;
         }
 
-        // A unique inert base URI prevents WebView from coalescing consecutive
-        // LoadHtml calls for different Grasshopper objects.
-        _webView.LoadHtml(html, new Uri($"https://superhelper.invalid/origin/{++_revision}/"));
+        // Eto's WebView2 handler maps every non-null base URI to the same
+        // local server URL, so later assignments do not trigger navigation.
+        // Loading HTML directly refreshes the document for each GH object.
+        _webView.LoadHtml(html);
     }
 }

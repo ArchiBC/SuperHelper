@@ -32,6 +32,7 @@ public sealed class SuperHelperControl : Panel
     private readonly SettingsPanel _settingsPanel;
     private readonly WorkspaceLayoutController _workspaceLayout;
     private GH_DocumentObject _currentObject;
+    private bool _workspaceShutdown;
 
     public SuperHelperControl()
     {
@@ -137,6 +138,10 @@ public sealed class SuperHelperControl : Panel
 
     public void ResetViewport()
     {
+        if (_workspaceShutdown)
+        {
+            return;
+        }
         _viewportPanel.ResetViewport();
         _commandPanel.ResetDocument();
     }
@@ -149,6 +154,10 @@ public sealed class SuperHelperControl : Panel
 
     internal void OnWorkspaceShown()
     {
+        if (_workspaceShutdown)
+        {
+            return;
+        }
         StartFeatureControls();
         _viewportPanel.OnWorkspaceShown();
     }
@@ -171,6 +180,11 @@ public sealed class SuperHelperControl : Panel
 
     public void ShutdownWorkspace()
     {
+        if (_workspaceShutdown)
+        {
+            return;
+        }
+        _workspaceShutdown = true;
         StopFeatureControls();
         _commandPanel.Shutdown();
         _viewportPanel.Shutdown();
@@ -192,6 +206,10 @@ public sealed class SuperHelperControl : Panel
 
     private void StartFeatureControls()
     {
+        if (_workspaceShutdown)
+        {
+            return;
+        }
         _viewportPanel.Start();
         _commandPanel.Start();
         ResetViewport();

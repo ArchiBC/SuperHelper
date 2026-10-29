@@ -50,8 +50,8 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Grasshopper" Version="9.0.26244.12303-beta" ExcludeAssets="runtime" />
-    <PackageReference Include="RhinoCommon" Version="9.0.26244.12303-beta" ExcludeAssets="runtime" />
-    <PackageReference Include="Eto.Serialization.Xaml" Version="2.11.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Grasshopper" Version="9.0.26300.9401" ExcludeAssets="runtime" />
+    <PackageReference Include="RhinoCommon" Version="9.0.26300.9401" ExcludeAssets="runtime" />
+    <PackageReference Include="Eto.Serialization.Xaml" Version="2.13.0" ExcludeAssets="runtime" />
   </ItemGroup>
 </Project>

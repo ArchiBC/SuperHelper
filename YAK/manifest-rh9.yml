@@ -1,0 +1,20 @@
+---
+name: SuperHelperR9
+version: $version
+authors:
+- ArchiBC
+description: >
+  A docked Grasshopper helper workspace for Rhino 9 and .NET 10.
+
+  Includes an interactive Rhino viewport, native command input and history,
+  component help, web help, parameter inspection, examples, development
+  information, file management and persistent workspace layout.
+url: https://github.com/ArchiBC/SuperHelper
+keywords:
+- grasshopper
+- help
+- panel
+- viewport
+- parameter
+- rhino9
+icon: icon.png

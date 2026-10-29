@@ -215,7 +215,13 @@ internal sealed class RhinoViewportPanel : Panel
             return;
         }
 
-        InvokeOnEtoUi(() => _viewport?.Activate());
+        InvokeOnEtoUi(() =>
+        {
+            // GH hides its editor before entering the native getter. Restore
+            // it here as queued visibility work can wait until the getter ends.
+            RestoreEditor(Instances.DocumentEditor);
+            _viewport?.Activate();
+        });
     }
 
     private void OnCommandBegan(object sender, RhinoCommandEventArgs e)

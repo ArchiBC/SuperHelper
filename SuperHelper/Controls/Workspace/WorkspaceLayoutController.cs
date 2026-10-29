@@ -13,6 +13,7 @@ internal sealed class WorkspaceLayoutController
     private const string DefaultHelpVisibleKey = "SuperHelper.Default.HelpVisible";
 
     private readonly Control _owner;
+    private readonly Panel _workspaceContentHost;
     private readonly SettingsPanel _settingsPanel;
     private EmbeddedRhinoWorkspace _workspace;
 
@@ -27,6 +28,7 @@ internal sealed class WorkspaceLayoutController
         SettingsPanel settingsPanel)
     {
         _owner = owner;
+        _workspaceContentHost = workspaceContentHost;
         _settingsPanel = settingsPanel;
         _settingsPanel.SectionVisibilityChanged += SetSectionVisible;
 
@@ -102,8 +104,14 @@ internal sealed class WorkspaceLayoutController
 
     public void Shutdown()
     {
-        _workspace?.Dispose();
+        var workspace = _workspace;
         _workspace = null;
+        _settingsPanel.SectionVisibilityChanged -= SetSectionVisible;
+        if (!_workspaceContentHost.IsDisposed)
+        {
+            _workspaceContentHost.Content = null;
+        }
+        workspace?.Dispose();
     }
 
     private static Dictionary<Guid, Control> DetachPanelContents(
