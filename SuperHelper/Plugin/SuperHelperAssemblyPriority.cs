@@ -22,6 +22,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
     private readonly HashSet<ToolStripButton> _workspaceButtons = [];
     private readonly HashSet<ToolStripMenuItem> _workspaceCommands = [];
     private GH_DocumentEditor _editor;
+    private IDisposable _canvasInputBinding;
 
     private static GrasshopperPanelHost PanelHost => PanelHostFactory.Value;
 
@@ -80,6 +81,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
     private void OnCanvasCreated(GH_Canvas canvas)
     {
         Instances.CanvasCreated -= OnCanvasCreated;
+        _canvasInputBinding = WorkspacePlatform.Current.BindCanvasInput(canvas);
         if (Instances.DocumentEditor is { } editor)
         {
             InitializeEditor(editor);

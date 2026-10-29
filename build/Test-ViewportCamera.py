@@ -15,6 +15,7 @@ import Grasshopper
 from Eto.Forms import Application
 from Grasshopper.Kernel import GH_Document
 from Grasshopper.Kernel.Parameters import Param_Point
+from Grasshopper.Kernel.Types import GH_Point
 from System.Reflection import BindingFlags
 from System.Windows.Forms import ContextMenuStrip
 
@@ -46,6 +47,8 @@ def host():
     return field(state['panel'], '_viewport')
 
 def camera():
+    if prop(host(), 'NeedsRecreation'):
+        raise RuntimeError('Native viewport retired before camera sampling')
     viewport = prop(host(), 'Viewport')
     def xyz(value):
         return [value.X, value.Y, value.Z]
@@ -66,7 +69,10 @@ def same_camera(expected, actual):
         and expected['perspective'] == actual['perspective']
 
 def move_camera(offset):
+    if prop(host(), 'NeedsRecreation'):
+        raise RuntimeError('Native viewport retired before camera update')
     viewport = prop(host(), 'Viewport')
+    viewport.ChangeToPerspectiveProjection(True, 42 + offset / 10.0)
     viewport.SetCameraLocations(Rhino.Geometry.Point3d(120 + offset, 80, 0),
                                Rhino.Geometry.Point3d(240 + offset, 180, 160))
     viewport.Camera35mmLensLength = 42 + offset / 10.0
@@ -78,6 +84,7 @@ def finish():
     Rhino.RhinoApp.CommandPromptChanged -= on_prompt
     try:
         if state['original'] is not None:
+            call(state['panel'], 'Activate', False)
             viewport = prop(host(), 'Viewport')
             viewport.SetViewProjection(state['original'], False)
             viewport.SetCameraTarget(state['original'].TargetPoint, False)
@@ -143,6 +150,9 @@ def run(sender, args):
             state['previous_document'] = Grasshopper.Instances.ActiveCanvas.Document
             state['test_document'] = GH_Document()
             point = Param_Point()
+            # RecreateSetup selects reference mode when the Rhino document
+            # already contains points. Seed coordinate data for this test.
+            point.PersistentData.Append(GH_Point(Rhino.Geometry.Point3d.Origin))
             point.CreateAttributes()
             state['test_document'].AddObject(point, False)
             Grasshopper.Instances.ActiveCanvas.Document = state['test_document']
@@ -151,6 +161,8 @@ def run(sender, args):
             prompt = next(i for i in state['menu'].Items if str(i.Text).lower().startswith('set one'))
             Rhino.RhinoApp.CommandPromptChanged += on_prompt
             prompt.PerformClick()
+            check('Native command control survives GH prompt', System.Object.ReferenceEquals(
+                state['command_mirror'], field(state['command_panel'], '_commandMirror')))
             check('Native command submits GH point', point.PersistentDataCount == 1
                   and all(v.Value.DistanceTo(Rhino.Geometry.Point3d(12,34,56)) < 1e-6
                           for v in point.PersistentData.AllData(True)))
@@ -173,12 +185,16 @@ def run(sender, args):
 
 try:
     assembly = next(a for a in System.AppDomain.CurrentDomain.GetAssemblies() if a.GetName().Name == 'SuperHelper')
+    report['tested_at'] = str(System.DateTime.Now.ToString('o'))
     with open(str(assembly.Location), 'rb') as stream:
         report['assembly_sha256'] = hashlib.sha256(stream.read()).hexdigest()
     control = assembly.GetType('SuperHelper.MenuReplacer').GetProperty('Control', flags).GetValue(None, None)
     state['priority'] = assembly.GetType('SuperHelper.SuperHelperAssemblyPriority')
     state['panel'] = field(control, '_viewportPanel')
-    state['native_command'] = field(field(field(control, '_commandPanel'), '_commandMirror'), '_commandDockBar')
+    state['command_panel'] = field(control, '_commandPanel')
+    state['command_mirror'] = field(state['command_panel'], '_commandMirror')
+    state['native_command'] = field(state['command_mirror'], '_commandDockBar')
+    call(state['panel'], 'Activate', False)
     state['original'] = Rhino.DocObjects.ViewportInfo(prop(host(), 'Viewport'))
     Rhino.RhinoApp.Idle += run
     save()

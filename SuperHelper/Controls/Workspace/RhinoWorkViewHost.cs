@@ -22,20 +22,24 @@ internal sealed class RhinoWorkViewHost : Panel
     private readonly RhinoDoc _document;
     private readonly Control _control;
     private readonly MethodInfo _refreshMethod;
+    private readonly uint _viewSerial;
+    private readonly RhinoViewport _fallbackViewport;
     private bool _resizePending;
     private ViewportInfo _viewProjection;
     private bool _restoreProjectionPending;
     private bool _restoringProjection;
     private bool _initialLoadComplete;
 
-    public RhinoView View { get; }
+    // Rhino's Mac handler resolves this serial on every access. Native reloads
+    // can replace the viewport pointer, so do not retain its managed wrapper.
+    public RhinoView View => _viewSerial == 0 ? null : RhinoView.FromRuntimeSerialNumber(_viewSerial);
 
-    public RhinoViewport Viewport { get; }
+    public RhinoViewport Viewport => _viewSerial == 0 ? _fallbackViewport : View?.MainViewport;
 
-    public bool IsInteractiveRhinoView => View != null;
+    public bool IsInteractiveRhinoView => _viewSerial != 0;
 
-    public bool NeedsRecreation => View != null
-        && View.Document?.RuntimeSerialNumber != _document.RuntimeSerialNumber;
+    public bool NeedsRecreation => _viewSerial != 0
+        && View?.Document?.RuntimeSerialNumber != _document.RuntimeSerialNumber;
 
     public RhinoWorkViewHost(RhinoDoc document, ViewportInfo viewProjection = null)
     {
@@ -46,14 +50,13 @@ internal sealed class RhinoWorkViewHost : Panel
         {
             _control = control;
             _refreshMethod = refreshMethod;
-            View = view;
-            Viewport = viewport;
+            _viewSerial = view.RuntimeSerialNumber;
         }
         else
         {
             var fallback = new ViewportControl("SuperHelper");
             _control = fallback;
-            Viewport = fallback.Viewport;
+            _fallbackViewport = fallback.Viewport;
             _refreshMethod = fallback.GetType().GetMethod(nameof(Refresh), Type.EmptyTypes);
         }
 
@@ -105,7 +108,7 @@ internal sealed class RhinoWorkViewHost : Panel
 
     private void OnViewModified(object sender, ViewEventArgs e)
     {
-        if (View != null && e.View?.RuntimeSerialNumber == View.RuntimeSerialNumber)
+        if (_viewSerial != 0 && e.View?.RuntimeSerialNumber == _viewSerial)
         {
             RememberViewProjection();
         }
@@ -136,6 +139,10 @@ internal sealed class RhinoWorkViewHost : Panel
         // can run inside GH's getter loop and overwrite the user's new camera.
         _restoreProjectionPending = _viewProjection != null;
         base.OnLoadComplete(e);
+        if (!NeedsRecreation)
+        {
+            WorkspacePlatform.Current.ConfigureViewport(_control);
+        }
         CompleteProjectionRestore();
     }
 

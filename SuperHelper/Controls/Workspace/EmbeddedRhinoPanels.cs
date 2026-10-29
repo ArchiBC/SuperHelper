@@ -111,6 +111,12 @@ public abstract class SuperHelperRhinoPanel : Panel
 
     private static void FitNestedPanel(Panel panel)
     {
+        // Size the scroll viewport, but let its document keep its natural
+        // height. Clamping it to ClientSize removes the scrollable overflow.
+        if (panel is Scrollable)
+        {
+            return;
+        }
         var content = panel.Content;
         if (content == null || panel.ClientSize.Width < 1 || panel.ClientSize.Height < 1)
         {

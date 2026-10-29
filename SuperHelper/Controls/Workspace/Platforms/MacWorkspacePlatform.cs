@@ -3,8 +3,11 @@ using Grasshopper;
 using Grasshopper.GUI;
 using Rhino;
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace SuperHelper;
 
@@ -32,7 +35,67 @@ internal sealed class MacWorkspacePlatform : IWorkspacePlatform
 
     public Control ViewportEventSource(Control wrapper, Control nativeControl) => wrapper;
 
+    public void ConfigureViewport(Control nativeControl)
+    {
+        if (nativeControl.GetType().FullName != "Rhino.UI.Controls.ViewControl")
+        {
+            return;
+        }
+        var view = NativeViewport(nativeControl);
+        if (view == null)
+        {
+            return;
+        }
+
+        // RhinoCommon's TitleVisible flag is already true for this view. The
+        // Mac host separately hides its own MRViewportLabel. Unhide that native
+        // object so Rhino supplies the full title menu and all its commands.
+        var stringType = AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("Foundation.NSString", false))
+            .First(type => type != null);
+        var macAssembly = stringType.Assembly;
+        var objectType = macAssembly.GetType("Foundation.NSObject", true);
+        var numberType = macAssembly.GetType("Foundation.NSNumber", true);
+        var selectorType = macAssembly.GetType("ObjCRuntime.Selector", true);
+        var selector = Activator.CreateInstance(selectorType, new object[] { "setViewLabelHidden:" });
+        object key = null;
+        object value = null;
+        try
+        {
+            if (view.GetType().GetMethod("RespondsToSelector", new[] { selectorType })
+                ?.Invoke(view, new[] { selector }) is not true)
+            {
+                return;
+            }
+            key = Activator.CreateInstance(stringType, new object[] { "viewLabelHidden" });
+            value = numberType.GetMethod("FromBoolean", new[] { typeof(bool) })
+                .Invoke(null, new object[] { false });
+            view.GetType().GetMethod("SetValueForKey", new[] { objectType, stringType })
+                .Invoke(view, new[] { value, key });
+        }
+        finally
+        {
+            (value as IDisposable)?.Dispose();
+            (key as IDisposable)?.Dispose();
+            (selector as IDisposable)?.Dispose();
+        }
+    }
+
     public void FocusViewport(Control nativeControl)
+    {
+        try
+        {
+            FocusNativeViewport(nativeControl);
+        }
+        catch (Exception exception)
+        {
+            // An AppKit mouse callback must not let a managed bridge failure
+            // escape into Cocoa, which aborts the entire Rhino process.
+            RhinoApp.WriteLine("SuperHelper viewport focus: " + exception.GetBaseException().Message);
+        }
+    }
+
+    private static void FocusNativeViewport(Control nativeControl)
     {
         if (nativeControl.GetType().FullName != "Rhino.UI.Controls.ViewControl")
         {
@@ -42,10 +105,7 @@ internal sealed class MacWorkspacePlatform : IWorkspacePlatform
         // RhinoMac's ViewControl is a wrapper NSView. Eto.Focus targets that
         // wrapper, while Rhino's mouse/getter input belongs to its MRMetalView.
         // Keep the AppKit bridge here so Windows never loads Mac dependencies.
-        var handler = nativeControl.GetType().GetProperty("Handler", InstanceFlags | BindingFlags.DeclaredOnly)
-            ?.GetValue(nativeControl);
-        var container = handler?.GetType().GetProperty("ContainerControl", InstanceFlags)?.GetValue(handler);
-        var view = container?.GetType().GetField("_nsView", InstanceFlags)?.GetValue(container);
+        var view = NativeViewport(nativeControl, out var container);
         if (view == null)
         {
             throw new InvalidOperationException("Rhino's Mac native viewport is unavailable.");
@@ -54,12 +114,22 @@ internal sealed class MacWorkspacePlatform : IWorkspacePlatform
         var viewType = view.GetType();
         if (viewType.GetProperty("Superview")?.GetValue(view) == null)
         {
+            // GH temporarily unloads this host while starting a getter. Rhino's
+            // NSView can survive that transition detached from its Eto wrapper.
+            // Reattach it before assigning first responder, using a usable size
+            // before AddSubview triggers a Metal redraw.
+            var bounds = container.GetType().GetProperty("Bounds")?.GetValue(container);
+            if (bounds == null
+                || NativeDouble(bounds.GetType().GetProperty("Width")?.GetValue(bounds)) <= 0
+                || NativeDouble(bounds.GetType().GetProperty("Height")?.GetValue(bounds)) <= 0)
+            {
+                return;
+            }
+            viewType.GetProperty("Frame")?.SetValue(view, bounds);
             var addSubview = container.GetType().GetMethods().Single(method =>
                 method.Name == "AddSubview" && method.GetParameters().Length == 1);
             addSubview.Invoke(container, new[] { view });
-            viewType.GetProperty("Frame")?.SetValue(view, container.GetType().GetProperty("Bounds")?.GetValue(container));
         }
-
         var window = viewType.GetProperty("Window")?.GetValue(view);
         if (window != null)
         {
@@ -69,7 +139,31 @@ internal sealed class MacWorkspacePlatform : IWorkspacePlatform
         }
     }
 
+    private static object NativeViewport(Control nativeControl) => NativeViewport(nativeControl, out _);
+
+    private static double NativeDouble(object value) => value is NFloat number ? (double)number : Convert.ToDouble(value);
+
+    private static object NativeViewport(Control nativeControl, out object container)
+    {
+        var handler = nativeControl.GetType().GetProperty("Handler", InstanceFlags | BindingFlags.DeclaredOnly)
+            ?.GetValue(nativeControl);
+        container = handler?.GetType().GetProperty("ContainerControl", InstanceFlags)?.GetValue(handler);
+        return container?.GetType().GetField("_nsView", InstanceFlags)?.GetValue(container);
+    }
+
+    public void OpenFileLocation(string path)
+    {
+        var start = new ProcessStartInfo { FileName = "/usr/bin/open", UseShellExecute = false };
+        if (File.Exists(path))
+        {
+            start.ArgumentList.Add("-R");
+        }
+        start.ArgumentList.Add(path);
+        Process.Start(start)?.Dispose();
+    }
+
     public IDisposable BindCommandInput(TextBox input) => new CommandInputFocus(input);
+    public IDisposable BindCanvasInput(Grasshopper.GUI.Canvas.GH_Canvas canvas) => MacCanvasWheelBinding.TryCreate(canvas);
 
     private sealed class CommandInputFocus : IDisposable
     {

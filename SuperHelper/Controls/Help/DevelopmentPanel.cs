@@ -4,7 +4,6 @@ using Grasshopper;
 using Grasshopper.Kernel;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -80,7 +79,9 @@ internal sealed class DevelopmentPanel : Panel
     {
         var assembly = obj.GetType().Assembly;
         var library = Instances.ComponentServer.Libraries.FirstOrDefault(item => item.Assembly == assembly);
-        return library?.Location ?? assembly.Location ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(library?.Location) && File.Exists(library.Location)
+            ? library.Location
+            : assembly.Location ?? string.Empty;
     }
 
     private void OpenAssemblyFolder()
@@ -93,10 +94,14 @@ internal sealed class DevelopmentPanel : Panel
 
         try
         {
-            var directory = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+            if (File.Exists(path) || Directory.Exists(path))
             {
-                Process.Start(new ProcessStartInfo { FileName = directory, UseShellExecute = true });
+                WorkspacePlatform.Current.OpenFileLocation(Path.GetFullPath(path));
+            }
+            else
+            {
+                MessageBox.Show(this, "The assembly path no longer exists: " + path,
+                    "SuperHelper", MessageBoxType.Warning);
             }
         }
         catch (Exception exception)

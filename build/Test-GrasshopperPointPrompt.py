@@ -2,6 +2,7 @@
 # A temporary GH point parameter exercises GH's own persistent-data getter.
 import clr
 import json
+import hashlib
 import os
 import traceback
 import System
@@ -20,6 +21,9 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 path = os.path.join(root, 'artifacts', 'grasshopper-point-prompt.json')
 report = {'pending': True, 'passed': False, 'rhino': str(Rhino.RhinoApp.Version)}
 assembly = next(a for a in System.AppDomain.CurrentDomain.GetAssemblies() if a.GetName().Name == 'SuperHelper')
+report['tested_at'] = str(System.DateTime.Now.ToString('o'))
+with open(str(assembly.Location), 'rb') as stream:
+    report['assembly_sha256'] = hashlib.sha256(stream.read()).hexdigest()
 control = assembly.GetType('SuperHelper.MenuReplacer').GetProperty('Control', flags).GetValue(None, None)
 viewport_panel = control.GetType().GetField('_viewportPanel', flags).GetValue(control)
 

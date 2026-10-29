@@ -10,8 +10,11 @@ internal interface IWorkspacePlatform
     object DockSitesOwner(Assembly rhinoUiAssembly, RhinoDoc document);
     uint WindowSerialNumber(Assembly rhinoUiAssembly, RhinoDoc document);
     Control ViewportEventSource(Control wrapper, Control nativeControl);
+    void ConfigureViewport(Control nativeControl);
     void FocusViewport(Control nativeControl);
+    void OpenFileLocation(string path);
     IDisposable BindCommandInput(TextBox input);
+    IDisposable BindCanvasInput(Grasshopper.GUI.Canvas.GH_Canvas canvas);
 }
 
 internal static class WorkspacePlatform

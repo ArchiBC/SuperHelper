@@ -13,6 +13,11 @@ internal sealed class SettingsPanel : Panel
     private readonly CheckBox _commandVisible = new() { Text = "Command" };
     private readonly CheckBox _viewportVisible = new() { Text = "Viewport" };
     private readonly CheckBox _helpVisible = new() { Text = "Help" };
+    private readonly CheckBox _reverseCanvasWheel = new()
+    {
+        Text = "Reverse wheel direction",
+        ToolTip = "Reverse Grasshopper canvas zoom without changing Rhino viewport zoom or help scrolling.",
+    };
     private readonly Slider _wireWidth = new() { MinValue = 1, MaxValue = 15 };
     private Scrollable _scroll;
     private bool _syncingVisibility;
@@ -59,6 +64,10 @@ internal sealed class SettingsPanel : Panel
         _autoTarget.Checked = SuperHelperPreferences.AutoTarget;
         _autoTarget.CheckedChanged += (_, _) =>
             SuperHelperPreferences.AutoTarget = _autoTarget.Checked == true;
+
+        _reverseCanvasWheel.Checked = SuperHelperPreferences.ReverseCanvasWheelZoom;
+        _reverseCanvasWheel.CheckedChanged += (_, _) =>
+            SuperHelperPreferences.ReverseCanvasWheelZoom = _reverseCanvasWheel.Checked == true;
 
         _wireWidth.Value = SuperHelperPreferences.DisplayWireWidth;
         _wireWidth.ValueChanged += (_, _) =>
@@ -134,11 +143,9 @@ internal sealed class SettingsPanel : Panel
         },
     };
 
-    private Control BuildGeneralSettings(Button switchSide) => new GroupBox
+    private Control BuildGeneralSettings(Button switchSide)
     {
-        Text = "General",
-        Padding = new Padding(7, 5),
-        Content = new TableLayout
+        var layout = new TableLayout
         {
             Spacing = new Size(6, 6),
             Rows =
@@ -154,8 +161,15 @@ internal sealed class SettingsPanel : Panel
                         },
                     }, true)),
             },
-        },
-    };
+        };
+        if (Rhino.Runtime.HostUtils.RunningOnOSX)
+        {
+            layout.Rows.Add(new TableRow(
+                new Label { Text = "GH Canvas Zoom:", VerticalAlignment = VerticalAlignment.Center },
+                new TableCell(_reverseCanvasWheel, true)));
+        }
+        return new GroupBox { Text = "General", Padding = new Padding(7, 5), Content = layout };
+    }
 
     private Control BuildHighlightSettings(Label widthValue) => new Expander
     {

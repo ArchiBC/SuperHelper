@@ -5,6 +5,7 @@ namespace SuperHelper;
 
 internal static class SuperHelperPreferences
 {
+    internal static event System.Action<bool> ReverseCanvasWheelZoomChanged;
     private static readonly System.Drawing.Color WireColorDefault = System.Drawing.Color.DarkBlue;
     private static readonly System.Drawing.Color MaterialColorDefault = System.Drawing.Color.DarkBlue;
 
@@ -12,6 +13,20 @@ internal static class SuperHelperPreferences
     {
         get => Instances.Settings.GetValue(nameof(AutoTarget), true);
         set => Instances.Settings.SetValue(nameof(AutoTarget), value);
+    }
+
+    public static bool ReverseCanvasWheelZoom
+    {
+        get => Instances.Settings.GetValue("SuperHelper.ReverseCanvasWheelZoom", false);
+        set
+        {
+            if (ReverseCanvasWheelZoom == value)
+            {
+                return;
+            }
+            Instances.Settings.SetValue("SuperHelper.ReverseCanvasWheelZoom", value);
+            ReverseCanvasWheelZoomChanged?.Invoke(value);
+        }
     }
 
     public static string FileManagerDirectory
