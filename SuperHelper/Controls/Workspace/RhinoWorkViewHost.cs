@@ -56,7 +56,7 @@ internal sealed class RhinoWorkViewHost : Panel
         SetDefaultPerspectiveProjection();
         // Rhino's native NSView does not implement Eto's IMacControl event
         // bridge. Attach Eto focus/mouse events to our wrapper on macOS.
-        Control eventSource = Rhino.Runtime.HostUtils.RunningOnOSX ? this : _control;
+        Control eventSource = WorkspacePlatform.Current.ViewportEventSource(this, _control);
         eventSource.GotFocus += (_, _) => Activate(focusControl: false);
         eventSource.MouseDown += (_, _) => Activate();
         eventSource.MouseEnter += (_, _) =>
@@ -76,13 +76,14 @@ internal sealed class RhinoWorkViewHost : Panel
         {
             return;
         }
-        if (View != null && View.RuntimeSerialNumber != 0)
+        if (View != null && View.RuntimeSerialNumber != 0
+            && _document.Views.ActiveView?.RuntimeSerialNumber != View.RuntimeSerialNumber)
         {
             _document.Views.ActiveView = View;
         }
         if (focusControl)
         {
-            _control.Focus();
+            WorkspacePlatform.Current.FocusViewport(_control);
         }
     }
 

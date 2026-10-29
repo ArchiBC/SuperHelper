@@ -28,6 +28,7 @@ internal sealed class RhinoCommandMirrorHost : Panel
     private readonly MethodInfo _buildUiMethod;
     private readonly MethodInfo _endCommandMethod;
     private readonly object _commandDockBar;
+    private readonly IDisposable _commandInputBinding;
     private bool _eventsSubscribed;
 
     private RhinoCommandMirrorHost(
@@ -46,6 +47,11 @@ internal sealed class RhinoCommandMirrorHost : Panel
         _buildUiMethod = buildUiMethod;
         _endCommandMethod = endCommandMethod;
         Content = dockBarControl;
+        if (commandDockBar.GetType().GetProperty("CommandLineInput",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(commandDockBar) is TextBox input)
+        {
+            _commandInputBinding = WorkspacePlatform.Current.BindCommandInput(input);
+        }
         SubscribeEvents();
     }
 
@@ -142,6 +148,7 @@ internal sealed class RhinoCommandMirrorHost : Panel
     {
         if (disposing)
         {
+            _commandInputBinding?.Dispose();
             UnsubscribeEvents();
         }
         base.Dispose(disposing);

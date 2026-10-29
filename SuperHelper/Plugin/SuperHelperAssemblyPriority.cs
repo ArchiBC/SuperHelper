@@ -164,7 +164,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
                 Margin = new Padding(2, 0, 2, 0),
                 Size = new System.Drawing.Size(6, 40),
             });
-            button = new ToolStripButton(Properties.Resources.SuperHelperIcon_24)
+            button = new ToolStripButton
             {
                 Name = ToolbarButtonName,
                 ToolTipText = ToolbarButtonDescription,
@@ -172,6 +172,9 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
                 DisplayStyle = ToolStripItemDisplayStyle.Image,
             };
             toolbar.Items.Add(button);
+            // Rhino's Mac WinForms bridge creates the native segmented
+            // control on Add. Set the image afterwards so it reaches it.
+            button.Image = Properties.Resources.SuperHelperIcon_24;
         }
 
         button.Click -= WorkspaceCommandClick;

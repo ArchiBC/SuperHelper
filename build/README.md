@@ -63,9 +63,17 @@ macOS 使用 Rhino 自带的 Yak，其他参数相同：
 
 构建或安装插件后重启 Rhino，打开独立测试模型并启动 Grasshopper。运行 Rhino 的 `_-RunPythonScript`，选择仓库中的 `build/Test-RhinoCompatibility.py`。脚本使用 Rhino 自带的 IronPython，不需要额外 Python 依赖；在 `artifacts/rhino-compatibility.json` 保存环境、程序集版本及逐项结果。
 
-回归覆盖侧栏尺寸、交互视口及活动状态、原生命令镜像、七个帮助页、区块显示切换、左右停靠、隐藏重开、组件帮助命令/F1、参数及开发信息、命令建点和文件列表。脚本会切换到临时 GH 文档，最后恢复原文档，并删除命令测试创建的点。鼠标取点、拖拽分隔条和窗口缩放仍需手工检查。
+回归覆盖侧栏尺寸、视口及活动状态、原生命令镜像、七个帮助页、区块显示切换、左右停靠、隐藏重开、组件帮助命令/F1、参数及开发信息、命令建点和文件列表。Mac 额外检查原生命令输入的焦点绑定及绘图 NSView 的 first responder。脚本最后连续观察 15 秒并重复相同尺寸的布局，要求始终保留同一个有效视口。脚本会恢复原 GH 文档，并删除命令测试创建的点。
 
-2026-10-29 实测：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402 / Rhino 自带 .NET 10.0.2，Yak 安装后自动加载，30 项检查通过，包括本地 GH 示例解析和空闲时的原生视口恢复。界面自动化读取 Rhino 窗口超时，鼠标取点和拖拽未纳入本次通过项。
+鼠标取点必须另跑 `build/Test-GrasshopperPointPrompt.py`，在临时 Pt 参数发起的取点提示中点击 SuperHelper 的嵌入视口。结果写入 `artifacts/grasshopper-point-prompt.json`；结束或取消后恢复原 GH 文档。只有该报告 `pending=false` 且 `passed=true`，才算通过 GH 持久数据取点。命令区还需手动检查普通输入、坐标输入、回车及 Esc，另查分隔条拖拽和窗口缩放。
+
+2026-10-29 实测：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402 / Rhino 自带 .NET 10.0.2。程序集 SHA256 `c43143ece68aeead34fe92407693bc4fca8583aab155cb688ce1fc561c4546d7` 的 34 项脚本检查通过，原生命令区与七个帮助页图标均已显示。鼠标取点尚未通过验证，不能据此宣布完整 Mac 功能兼容；兼容版本保持未发布。
+
+### 平台实现边界
+
+`Controls/Workspace/Platforms` 中的 `IWorkspacePlatform` 分别由 `WindowsWorkspacePlatform` 和 `MacWorkspacePlatform` 实现，隔离窗口标识、原生视口事件和焦点、GH 对命令输入的键盘预处理。帮助、参数解析、文件管理与设置继续共享。两端均保留一体式原生命令区，Mac 不以独立输入栏替代它。
+
+Rhino 的停靠区 `RecalcLayout` 会重新挂载全部区块，在 Mac 上可能销毁嵌入视口；相同尺寸的布局不得重复调用它。区块总高度必须包含 Rhino 分隔条的宽度，避免每次布局又改变末尾区块尺寸。Mac 的原生视口需聚焦内部绘图 NSView，不能对其外层 Eto 包装控件直接调用 Focus。
 
 macOS 组件帮助通过 View → SuperHelper Component Help、F1 或工具栏右键菜单的 Help for Selected Component 打开；Auto Target 也会随选择更新。GH 自带右键 Help 保留原生行为。Mac 不执行旧的 .NET 方法内存替换。
 

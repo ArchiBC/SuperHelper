@@ -157,9 +157,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		EmbeddedRhinoPanelContent.Set(contents);
 		// On Mac the RhinoDoc constructor leaves the window serial at zero,
 		// so dock bars cannot resolve their placement when added to a band.
-		object dockSitesOwner = Rhino.Runtime.HostUtils.RunningOnOSX
-			? RhinoWindowRuntime.SerialNumber(_rhinoUiAssembly, _document)
-			: (object)_document;
+		object dockSitesOwner = WorkspacePlatform.Current.DockSitesOwner(_rhinoUiAssembly, _document);
 		_dockSites = Activator.CreateInstance(_dockSitesType, InstanceFlags, null, new[] { dockSitesOwner }, null)
 			?? throw new InvalidOperationException("Unable to create Rhino dock sites.");
 		CreateSiteControls();
@@ -457,6 +455,15 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 				? EmbeddedRhinoPanelIds.FileManager
 				: restoredPanelIds[0];
 		_helpCollection = AddInitialCollection("Help", _helpDockBarId, selectedPanelId, restoredPanelIds, 300);
+		if (Rhino.Runtime.HostUtils.RunningOnOSX)
+		{
+			// Keep the compact help tabs consistent instead of inheriting
+			// Rhino's mixed text/icon overflow treatment on narrow Mac hosts.
+			MethodInfo setStyle = _collectionType.GetMethod("SetDisplayStyle", InstanceFlags);
+			Type styleType = setStyle.GetParameters()[0].ParameterType;
+			setStyle.Invoke(_helpCollection, new[] { Enum.Parse(styleType, "Bitmap") });
+			SetProperty(_helpCollection, "DisplayStyleFromParent", false);
+		}
 	}
 
 	private bool IsRestorableHelpPanel(Guid panelId)
@@ -848,13 +855,21 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			num = Math.Max(0, (int)((float)num * num6));
 			num2 = Math.Max(0, width - num);
 		}
-		Place(DockLocation.Top, num, 0, width - num - num2, num3);
-		Place(DockLocation.Bottom, num, height - num4, width - num - num2, num4);
-		Place(DockLocation.Left, 0, num3, num, height - num3 - num4);
-		Place(DockLocation.Right, width - num2, num3, num2, height - num3 - num4);
-		foreach (DockLocation item in _sites.Keys.Where((DockLocation value) => GetInt(_sites[value], "BandCount") > 0))
+		var resizedSites = new[]
 		{
-			RecalculateSite(item);
+			(DockLocation.Top, Place(DockLocation.Top, num, 0, width - num - num2, num3)),
+			(DockLocation.Bottom, Place(DockLocation.Bottom, num, height - num4, width - num - num2, num4)),
+			(DockLocation.Left, Place(DockLocation.Left, 0, num3, num, height - num3 - num4)),
+			(DockLocation.Right, Place(DockLocation.Right, width - num2, num3, num2, height - num3 - num4)),
+		};
+		foreach (var (location, resized) in resizedSites)
+		{
+			// RecalcLayout removes and reparents every band. On macOS that
+			// destroys embedded RhinoViews, so do it only for a real resize.
+			if (resized && GetInt(_sites[location], "BandCount") > 0)
+			{
+				RecalculateSite(location);
+			}
 		}
 		DisableEmbeddedDragHandles();
 		QueueVisiblePanelContentFit();
@@ -986,7 +1001,12 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			object target = array[^1];
 			float num = GetFloat(target, "Size");
 			float num2 = array.Take(array.Length - 1).Sum((object band) => GetFloat(band, "Size"));
-			float num3 = Math.Max(40f, (float)targetExtent - num2);
+			// DockSiteSize includes Rhino's band resizers. Omitting those
+			// pixels makes every layout enlarge the band and rebuild it again.
+			float currentExtent = GetFloat(_siteControls[location], "DockSiteSize");
+			float num3 = Math.Max(40f, currentExtent > 0f
+				? num + targetExtent - currentExtent
+				: targetExtent - num2);
 			if (!(Math.Abs(num3 - num) < 0.5f))
 			{
 				SetProperty(target, "Size", num3);
@@ -1011,12 +1031,21 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		return Math.Clamp((int)Math.Ceiling(num), emptySize, Math.Max(emptySize, available));
 	}
 
-	private void Place(DockLocation location, int x, int y, int width, int height)
+	private bool Place(DockLocation location, int x, int y, int width, int height)
 	{
 		//IL_001f: Unknown result type (might be due to invalid IL or missing references)
 		Control val = _siteControls[location];
-		val.Size = new Size(Math.Max(0, width), Math.Max(0, height));
-		_layout.Move(val, x, y);
+		var size = new Size(Math.Max(0, width), Math.Max(0, height));
+		bool resized = val.Size != size;
+		if (resized)
+		{
+			val.Size = size;
+		}
+		if (val.Bounds.Location != new Point(x, y))
+		{
+			_layout.Move(val, x, y);
+		}
+		return resized;
 	}
 
 	private void QueueRelayout()

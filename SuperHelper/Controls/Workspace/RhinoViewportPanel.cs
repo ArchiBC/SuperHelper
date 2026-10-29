@@ -64,7 +64,7 @@ internal sealed class RhinoViewportPanel : Panel
         {
             Content = null;
             _viewport?.Dispose();
-            _viewport = new RhinoWorkViewHost(activeDocument);
+            _viewport = new RhinoWorkViewHost(activeDocument) { Size = ClientSize };
             _viewportDocumentSerial = activeDocument.RuntimeSerialNumber;
             Content = _viewport;
         }

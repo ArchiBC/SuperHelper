@@ -41,11 +41,50 @@ def check(name, condition, detail=''):
     report['checks'].append({'name': name, 'passed': bool(condition), 'detail': str(detail)})
 
 def save():
-    report['passed'] = len(report['checks']) > 0 and all(c['passed'] for c in report['checks'])
+    report['passed'] = not report.get('pending', False) and len(report['checks']) > 0 and all(c['passed'] for c in report['checks'])
     if not os.path.isdir(os.path.dirname(report_path)):
         os.makedirs(os.path.dirname(report_path))
     with open(report_path, 'w') as stream:
         json.dump(report, stream, indent=2)
+
+def start_stability_check(workspace, viewport_panel):
+    # Allow command/layout transitions to settle, then verify the same native
+    # view survives repeated unchanged layouts. A view that is recreated every
+    # idle event can pass a one-time validity check while visibly flickering.
+    started = System.DateTime.UtcNow
+    samples = []
+
+    def sample(sender, args):
+        elapsed = (System.DateTime.UtcNow - started).TotalSeconds
+        try:
+            if elapsed < 2:
+                return
+            viewport = field(viewport_panel, '_viewport')
+            view = prop(viewport, 'View')
+            samples.append({
+                'seconds': elapsed,
+                'serial': int(view.RuntimeSerialNumber),
+                'valid': not prop(viewport, 'NeedsRecreation'),
+                'width': viewport.Width,
+                'height': viewport.Height,
+            })
+            call(workspace, 'Relayout')
+            if elapsed < 17:
+                return
+            serials = set(s['serial'] for s in samples)
+            check('Native viewport stays stable for 15 seconds', len(samples) >= 40
+                  and len(serials) == 1 and all(s['valid'] for s in samples),
+                  '{0} samples, {1} native views'.format(len(samples), len(serials)))
+            check('Stable viewport has usable native size', all(s['width'] > 50 and s['height'] > 50 for s in samples))
+            report['viewport_stability'] = samples
+        except:
+            check('Viewport stability sampling', False, traceback.format_exc())
+        Rhino.RhinoApp.Idle -= sample
+        report['pending'] = False
+        save()
+        Rhino.RhinoApp.WriteLine('SuperHelper compatibility: {0}; {1}'.format('PASS' if report['passed'] else 'FAIL', report_path))
+
+    Rhino.RhinoApp.Idle += sample
 
 previous_document = Grasshopper.Instances.ActiveCanvas.Document
 test_document = None
@@ -79,6 +118,16 @@ try:
     check('Embedded view becomes active', Rhino.RhinoDoc.ActiveDoc.Views.ActiveView.RuntimeSerialNumber == view.RuntimeSerialNumber)
     command = field(control, '_commandPanel')
     check('Native command mirror', field(command, '_commandMirror') is not None)
+    if Rhino.Runtime.HostUtils.RunningOnOSX:
+        check('Mac integrated command focus binding', field(field(command, '_commandMirror'), '_commandInputBinding') is not None)
+        call(viewport_panel, 'Activate', True)
+        child = field(field(viewport_panel, '_viewport'), '_control')
+        handler = next(p for p in child.GetType().GetProperties(flags)
+                       if p.Name == 'Handler' and p.DeclaringType == child.GetType()).GetValue(child, None)
+        container = prop(handler, 'ContainerControl')
+        native_view = field(container, '_nsView')
+        check('Mac viewport focuses the native drawing view', native_view.Superview is not None
+              and System.Object.ReferenceEquals(native_view.Window.FirstResponder, native_view))
 
     for index in range(7):
         call(workspace, 'SelectHelpPage', System.Int32(index))
@@ -168,9 +217,8 @@ try:
             for point_id in created_points:
                 rhino_document.Objects.Delete(point_id, True)
             rhino_document.Modified = was_modified
-            report['pending'] = False
             save()
-            Rhino.RhinoApp.WriteLine('SuperHelper compatibility: {0}; {1}'.format('PASS' if report['passed'] else 'FAIL', report_path))
+            start_stability_check(workspace, viewport_panel)
     command_check_pending = True
     report['pending'] = True
     Rhino.RhinoApp.Idle += test_command_on_idle
