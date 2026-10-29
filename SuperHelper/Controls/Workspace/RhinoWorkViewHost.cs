@@ -25,6 +25,7 @@ internal sealed class RhinoWorkViewHost : Panel
     private bool _resizePending;
     private ViewportInfo _viewProjection;
     private bool _restoreProjectionPending;
+    private bool _restoringProjection;
     private bool _initialLoadComplete;
 
     public RhinoView View { get; }
@@ -67,7 +68,6 @@ internal sealed class RhinoWorkViewHost : Panel
         // when GH shows it again after a getter. Keep the latest camera, rather
         // than the camera from before the prompt, across that native reload.
         _control.Load += (_, _) => _restoreProjectionPending = _viewProjection != null;
-        _control.LoadComplete += (_, _) => QueueProjectionRestore();
         _control.UnLoad += (_, _) => RememberViewProjection();
         RhinoView.Modified += OnViewModified;
         // Rhino's native NSView does not implement Eto's IMacControl event
@@ -114,7 +114,7 @@ internal sealed class RhinoWorkViewHost : Panel
     private void RememberViewProjection()
     {
         if (IsDisposed || NeedsRecreation || Viewport == null
-            || !_initialLoadComplete || _restoreProjectionPending)
+            || !_initialLoadComplete || _restoreProjectionPending || _restoringProjection)
         {
             return;
         }
@@ -128,22 +128,41 @@ internal sealed class RhinoWorkViewHost : Panel
         _viewProjection = projection;
     }
 
-    private void QueueProjectionRestore()
+    protected override void OnLoadComplete(EventArgs e)
     {
-        // LoadComplete is raised by the base class before Rhino's own fit.
-        // Restore on the next UI turn, once that fit has finished.
-        Application.Instance?.AsyncInvoke((Action)(() =>
+        // Container.OnLoadComplete loads its children after raising its own
+        // event. Wait for that whole call to return: the native child performs
+        // its ZoomExtents after raising its LoadComplete event. An async restore
+        // can run inside GH's getter loop and overwrite the user's new camera.
+        _restoreProjectionPending = _viewProjection != null;
+        base.OnLoadComplete(e);
+        CompleteProjectionRestore();
+    }
+
+    private bool CompleteProjectionRestore()
+    {
+        if (IsDisposed || NeedsRecreation || !_control.Loaded
+            || (!_restoreProjectionPending && _initialLoadComplete))
         {
-            if (IsDisposed || NeedsRecreation)
+            return false;
+        }
+
+        _restoringProjection = true;
+        try
+        {
+            if (_restoreProjectionPending)
             {
-                return;
+                RestoreViewProjection();
             }
-            RestoreViewProjection();
             _restoreProjectionPending = false;
             _initialLoadComplete = true;
-            RememberViewProjection();
-            Refresh();
-        }));
+        }
+        finally
+        {
+            _restoringProjection = false;
+        }
+        RememberViewProjection();
+        return true;
     }
 
     private void RestoreViewProjection()

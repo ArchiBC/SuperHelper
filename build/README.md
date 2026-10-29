@@ -69,7 +69,7 @@ macOS 使用 Rhino 自带的 Yak，其他参数相同：
 
 镜头另跑 `build/Test-ViewportCamera.py`：脚本检查重复刷新、隐藏重开、原生视口替换，以及 GH 取点期间移动镜头后结束取点，结果写入 `artifacts/viewport-camera.json`。脚本通过原生命令编辑器提交测试坐标，不代替鼠标点击验证；结束后恢复原 GH 文档和镜头。
 
-2026-10-29 实测：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402 / Rhino 自带 .NET 10.0.2。程序集 SHA256 `c43143ece68aeead34fe92407693bc4fca8583aab155cb688ce1fc561c4546d7` 的 34 项脚本检查通过，原生命令区与七个帮助页图标均已显示。用户随后手动确认 GH 的 Set one Point 能直接在嵌入视口取点，同时发现取点结束后镜头会回退。镜头修复已通过 Release 构建，新的镜头回归及命令键盘检查仍待实机验证；兼容版本保持未发布。
+2026-10-29 实测：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402 / Rhino 自带 .NET 10.0.2。用户手动确认 GH 的 Set one Point 能直接在嵌入视口取点，随后发现取点结束后镜头回退。修复后程序集 SHA256 `c9f3ad43842a192b4cf52a8be09805ec63fd63279050ff913efcf4e247a9ed20` 的 34 项功能检查、9 项镜头回归均通过；取点中改变的位置、目标、方向、上方向及镜头长度在结束取点并等待空闲后保持一致，左右切换导致原生视口重建后也保留镜头。原生命令区粘贴坐标并回车正确创建 `(11,22,33)` 的点，逐键输入及 Esc 仍在对照验证；兼容版本保持未发布。
 
 ### 平台实现边界
 
@@ -78,6 +78,8 @@ macOS 使用 Rhino 自带的 Yak，其他参数相同：
 Rhino 的停靠区 `RecalcLayout` 会重新挂载全部区块，在 Mac 上可能销毁嵌入视口；相同尺寸的布局不得重复调用它。区块总高度必须包含 Rhino 分隔条的宽度，避免每次布局又改变末尾区块尺寸。Mac 的原生视口需聚焦内部绘图 NSView，不能对其外层 Eto 包装控件直接调用 Focus。
 
 刷新已有视口不得执行 ZoomExtents。原生 ViewControl 自身在 LoadComplete 中也会缩放全部，因此宿主需持续保存最后的镜头投影，在重新加载后恢复，并在同一文档的视口重建时传递该状态；新文档首次加载仍使用原生自动缩放。
+
+镜头恢复必须在宿主 `OnLoadComplete` 调用 `base.OnLoadComplete` 返回后同步完成。Eto 容器先触发自己的事件、再加载子控件，Rhino 子控件又在触发事件后执行 ZoomExtents；绑定事件或异步恢复都会留下覆盖取点中新镜头的时序窗口。
 
 macOS 组件帮助通过 View → SuperHelper Component Help、F1 或工具栏右键菜单的 Help for Selected Component 打开；Auto Target 也会随选择更新。GH 自带右键 Help 保留原生行为。Mac 不执行旧的 .NET 方法内存替换。
 

@@ -130,12 +130,16 @@ def run(sender, args):
             report['camera_after_reopen'] = camera()
             check('Hide and reopen keep camera', same_camera(report['camera_before_refresh'], camera()))
             report['camera_before_replacement'] = move_camera(30)
-            prop(host(), 'View').Close()
-            call(state['panel'], 'ResetViewport')
+            # Use the workspace's normal reparenting path. RhinoView.Close is
+            # not a safe way to retire this internal, UI-owned document view.
+            report['view_before_relayout'] = int(prop(host(), 'View').RuntimeSerialNumber)
+            state['priority'].GetMethod('SwitchSide').Invoke(None, None)
+            state['priority'].GetMethod('SwitchSide').Invoke(None, None)
         elif stage == 2:
             report['camera_after_replacement'] = camera()
-            check('Replacement native view is valid', not prop(host(), 'NeedsRecreation'))
-            check('Replacement keeps latest camera', same_camera(report['camera_before_replacement'], camera()))
+            report['view_after_relayout'] = int(prop(host(), 'View').RuntimeSerialNumber)
+            check('Relayout leaves a valid native view', not prop(host(), 'NeedsRecreation'))
+            check('Relayout keeps latest camera', same_camera(report['camera_before_replacement'], camera()))
             state['previous_document'] = Grasshopper.Instances.ActiveCanvas.Document
             state['test_document'] = GH_Document()
             point = Param_Point()
