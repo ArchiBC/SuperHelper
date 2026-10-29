@@ -67,13 +67,17 @@ macOS 使用 Rhino 自带的 Yak，其他参数相同：
 
 鼠标取点必须另跑 `build/Test-GrasshopperPointPrompt.py`，在临时 Pt 参数发起的取点提示中点击 SuperHelper 的嵌入视口。结果写入 `artifacts/grasshopper-point-prompt.json`；结束或取消后恢复原 GH 文档。只有该报告 `pending=false` 且 `passed=true`，才算通过 GH 持久数据取点。命令区还需手动检查普通输入、坐标输入、回车及 Esc，另查分隔条拖拽和窗口缩放。
 
-2026-10-29 实测：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402 / Rhino 自带 .NET 10.0.2。程序集 SHA256 `c43143ece68aeead34fe92407693bc4fca8583aab155cb688ce1fc561c4546d7` 的 34 项脚本检查通过，原生命令区与七个帮助页图标均已显示。鼠标取点尚未通过验证，不能据此宣布完整 Mac 功能兼容；兼容版本保持未发布。
+镜头另跑 `build/Test-ViewportCamera.py`：脚本检查重复刷新、隐藏重开、原生视口替换，以及 GH 取点期间移动镜头后结束取点，结果写入 `artifacts/viewport-camera.json`。脚本通过原生命令编辑器提交测试坐标，不代替鼠标点击验证；结束后恢复原 GH 文档和镜头。
+
+2026-10-29 实测：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402 / Rhino 自带 .NET 10.0.2。程序集 SHA256 `c43143ece68aeead34fe92407693bc4fca8583aab155cb688ce1fc561c4546d7` 的 34 项脚本检查通过，原生命令区与七个帮助页图标均已显示。用户随后手动确认 GH 的 Set one Point 能直接在嵌入视口取点，同时发现取点结束后镜头会回退。镜头修复已通过 Release 构建，新的镜头回归及命令键盘检查仍待实机验证；兼容版本保持未发布。
 
 ### 平台实现边界
 
 `Controls/Workspace/Platforms` 中的 `IWorkspacePlatform` 分别由 `WindowsWorkspacePlatform` 和 `MacWorkspacePlatform` 实现，隔离窗口标识、原生视口事件和焦点、GH 对命令输入的键盘预处理。帮助、参数解析、文件管理与设置继续共享。两端均保留一体式原生命令区，Mac 不以独立输入栏替代它。
 
 Rhino 的停靠区 `RecalcLayout` 会重新挂载全部区块，在 Mac 上可能销毁嵌入视口；相同尺寸的布局不得重复调用它。区块总高度必须包含 Rhino 分隔条的宽度，避免每次布局又改变末尾区块尺寸。Mac 的原生视口需聚焦内部绘图 NSView，不能对其外层 Eto 包装控件直接调用 Focus。
+
+刷新已有视口不得执行 ZoomExtents。原生 ViewControl 自身在 LoadComplete 中也会缩放全部，因此宿主需持续保存最后的镜头投影，在重新加载后恢复，并在同一文档的视口重建时传递该状态；新文档首次加载仍使用原生自动缩放。
 
 macOS 组件帮助通过 View → SuperHelper Component Help、F1 或工具栏右键菜单的 Help for Selected Component 打开；Auto Target 也会随选择更新。GH 自带右键 Help 保留原生行为。Mac 不执行旧的 .NET 方法内存替换。
 

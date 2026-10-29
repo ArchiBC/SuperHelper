@@ -62,14 +62,18 @@ internal sealed class RhinoViewportPanel : Panel
         if (_viewport == null || _viewportDocumentSerial != activeDocument.RuntimeSerialNumber
             || _viewport.NeedsRecreation)
         {
+            // A retired native view still owns our last camera snapshot. Keep
+            // it only for the same document; a newly opened model starts fresh.
+            using var projection = _viewportDocumentSerial == activeDocument.RuntimeSerialNumber
+                ? _viewport?.CaptureViewProjection()
+                : null;
             Content = null;
             _viewport?.Dispose();
-            _viewport = new RhinoWorkViewHost(activeDocument) { Size = ClientSize };
+            _viewport = new RhinoWorkViewHost(activeDocument, projection) { Size = ClientSize };
             _viewportDocumentSerial = activeDocument.RuntimeSerialNumber;
             Content = _viewport;
         }
 
-        _viewport.Viewport?.ZoomExtents();
         _viewport.Refresh();
         if (_keepGrasshopperVisibleWhileWorkspaceOpen)
         {

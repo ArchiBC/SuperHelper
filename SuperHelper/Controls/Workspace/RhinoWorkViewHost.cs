@@ -1,6 +1,7 @@
 using Eto.Forms;
 using Rhino;
 using Rhino.Display;
+using Rhino.DocObjects;
 using Rhino.UI.Controls;
 using System;
 using System.Reflection;
@@ -22,6 +23,9 @@ internal sealed class RhinoWorkViewHost : Panel
     private readonly Control _control;
     private readonly MethodInfo _refreshMethod;
     private bool _resizePending;
+    private ViewportInfo _viewProjection;
+    private bool _restoreProjectionPending;
+    private bool _initialLoadComplete;
 
     public RhinoView View { get; }
 
@@ -32,7 +36,7 @@ internal sealed class RhinoWorkViewHost : Panel
     public bool NeedsRecreation => View != null
         && View.Document?.RuntimeSerialNumber != _document.RuntimeSerialNumber;
 
-    public RhinoWorkViewHost(RhinoDoc document)
+    public RhinoWorkViewHost(RhinoDoc document, ViewportInfo viewProjection = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         _document = document;
@@ -54,6 +58,18 @@ internal sealed class RhinoWorkViewHost : Panel
 
         Content = _control;
         SetDefaultPerspectiveProjection();
+        if (viewProjection != null)
+        {
+            _viewProjection = new ViewportInfo(viewProjection);
+            RestoreViewProjection();
+        }
+        // Rhino's ViewControl fits all geometry in OnLoadComplete, including
+        // when GH shows it again after a getter. Keep the latest camera, rather
+        // than the camera from before the prompt, across that native reload.
+        _control.Load += (_, _) => _restoreProjectionPending = _viewProjection != null;
+        _control.LoadComplete += (_, _) => QueueProjectionRestore();
+        _control.UnLoad += (_, _) => RememberViewProjection();
+        RhinoView.Modified += OnViewModified;
         // Rhino's native NSView does not implement Eto's IMacControl event
         // bridge. Attach Eto focus/mouse events to our wrapper on macOS.
         Control eventSource = WorkspacePlatform.Current.ViewportEventSource(this, _control);
@@ -68,6 +84,75 @@ internal sealed class RhinoWorkViewHost : Panel
         };
         SizeChanged += (_, _) => QueueViewportResize();
         Load += (_, _) => QueueViewportResize();
+    }
+
+    public ViewportInfo CaptureViewProjection()
+    {
+        RememberViewProjection();
+        return _viewProjection == null ? null : new ViewportInfo(_viewProjection);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            RhinoView.Modified -= OnViewModified;
+            _viewProjection?.Dispose();
+            _viewProjection = null;
+        }
+        base.Dispose(disposing);
+    }
+
+    private void OnViewModified(object sender, ViewEventArgs e)
+    {
+        if (View != null && e.View?.RuntimeSerialNumber == View.RuntimeSerialNumber)
+        {
+            RememberViewProjection();
+        }
+    }
+
+    private void RememberViewProjection()
+    {
+        if (IsDisposed || NeedsRecreation || Viewport == null
+            || !_initialLoadComplete || _restoreProjectionPending)
+        {
+            return;
+        }
+        var projection = new ViewportInfo(Viewport);
+        if (!projection.IsValidCamera || !projection.IsValidFrustum)
+        {
+            projection.Dispose();
+            return;
+        }
+        _viewProjection?.Dispose();
+        _viewProjection = projection;
+    }
+
+    private void QueueProjectionRestore()
+    {
+        // LoadComplete is raised by the base class before Rhino's own fit.
+        // Restore on the next UI turn, once that fit has finished.
+        Application.Instance?.AsyncInvoke((Action)(() =>
+        {
+            if (IsDisposed || NeedsRecreation)
+            {
+                return;
+            }
+            RestoreViewProjection();
+            _restoreProjectionPending = false;
+            _initialLoadComplete = true;
+            RememberViewProjection();
+            Refresh();
+        }));
+    }
+
+    private void RestoreViewProjection()
+    {
+        if (_viewProjection != null && Viewport != null)
+        {
+            Viewport.SetViewProjection(_viewProjection, updateTargetLocation: false);
+            Viewport.SetCameraTarget(_viewProjection.TargetPoint, updateCameraLocation: false);
+        }
     }
 
     public void Activate(bool focusControl = true)
