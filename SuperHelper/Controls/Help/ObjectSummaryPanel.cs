@@ -1,6 +1,5 @@
 using Eto.Drawing;
 using Eto.Forms;
-using Grasshopper.Kernel;
 
 namespace SuperHelper;
 
@@ -45,7 +44,7 @@ internal sealed class ObjectSummaryPanel : Panel
         };
     }
 
-    public void SetObject(GH_DocumentObject obj)
+    public void SetObject(HelpObject obj)
     {
         if (obj == null)
         {
@@ -56,11 +55,9 @@ internal sealed class ObjectSummaryPanel : Panel
             return;
         }
 
-        _icon.Image = EtoImageUtilities.FromBitmap(obj.Icon_24x24);
-        _title.Text = $"{obj.Name} ({obj.NickName})";
-        _instanceDescription.Text = obj is IGH_Param
-            ? string.Empty
-            : obj.InstanceDescription ?? string.Empty;
+        _icon.Image = obj.Icon;
+        _title.Text = string.IsNullOrWhiteSpace(obj.NickName) ? obj.Name : $"{obj.Name} ({obj.NickName})";
+        _instanceDescription.Text = obj.InstanceDescription ?? string.Empty;
         _description.Text = obj.Description ?? string.Empty;
     }
 }

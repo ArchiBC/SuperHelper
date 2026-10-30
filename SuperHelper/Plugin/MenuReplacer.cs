@@ -21,7 +21,7 @@ public abstract class MenuReplacer : GH_DocumentObject
     private static GH_DocumentObject _lastAutoTarget;
     private static bool _initialized;
 
-    internal static Dictionary<string, string[]> UrlExDict { get; private set; } = new();
+    internal static Dictionary<string, string[]> UrlExDict { get => HelperHost.Current.Examples.Items; private set => HelperHost.Current.Examples.Items = value; }
     internal static SuperHelperControl Control { get; } = new();
 
     public static DateTime LastDownloadURLTime
@@ -35,7 +35,7 @@ public abstract class MenuReplacer : GH_DocumentObject
     }
 
     internal static void SaveUrlExToJson() =>
-        File.WriteAllText(ExampleUrlLocation, JsonSerializer.Serialize(UrlExDict));
+        HelperHost.Current.Examples.Save();
 
     public static bool Init()
     {
@@ -51,7 +51,9 @@ public abstract class MenuReplacer : GH_DocumentObject
         Instances.ActiveCanvas.CanvasPostPaintObjects += ActiveCanvas_PostPaintObjects;
         Instances.ActiveCanvas.DocumentChanged += ActiveCanvas_DocumentChanged;
 
-        return ExchangeMethod(
+        // The method-descriptor layout used by the legacy hook is not an
+        // ARM64 contract. macOS uses the explicit help command instead.
+        return Rhino.Runtime.HostUtils.RunningOnOSX || ExchangeMethod(
             typeof(GH_DocumentObject).GetRuntimeMethods().First(method => method.Name.Contains("Menu_ObjectHelpClick")),
             typeof(MenuReplacer).GetRuntimeMethods().First(method => method.Name.Contains(nameof(Menu_ObjectHelpClickNew))));
     }
@@ -117,6 +119,7 @@ public abstract class MenuReplacer : GH_DocumentObject
         Grasshopper.GUI.Canvas.GH_CanvasDocumentChangedEventArgs e)
     {
         _lastAutoTarget = null;
+        Control.ClearObject();
         if (e.OldDocument != null)
         {
             e.OldDocument.SolutionEnd -= DocumentSolutionEnd;
@@ -169,6 +172,17 @@ public abstract class MenuReplacer : GH_DocumentObject
         SetOneObject(this);
     }
 
+    internal static void ShowSelectedObjectHelp()
+    {
+        var obj = Instances.ActiveCanvas?.Document?.SelectedObjects()
+            .OfType<GH_DocumentObject>().LastOrDefault() ?? Control.CurrentObject?.NativeObject as GH_DocumentObject;
+        if (obj != null)
+        {
+            SuperHelperAssemblyPriority.Show();
+            SetOneObject(obj);
+        }
+    }
+
     private static void SetOneObject(GH_DocumentObject obj)
     {
         if (obj == null)
@@ -186,10 +200,11 @@ public abstract class MenuReplacer : GH_DocumentObject
                 ? "We're sorry. Help is not yet available for this object"
                 : html;
 
-            var webUrl = WebHelpMappings.Resolve(obj, html);
+            var model = Grasshopper1Host.Describe(obj);
+            var webUrl = WebHelpMappings.Resolve(model, html);
 
             UrlExDict.TryGetValue(obj.ComponentGuid.ToString(), out var examples);
-            Control.SetObject(obj, html, webUrl, examples ?? Array.Empty<string>());
+            Control.SetObject(model, html, webUrl, examples ?? Array.Empty<string>());
         }));
     }
 
@@ -197,7 +212,7 @@ public abstract class MenuReplacer : GH_DocumentObject
     {
         if (Control.CurrentObject != null)
         {
-            SetOneObject(Control.CurrentObject);
+            SetOneObject(Control.CurrentObject.NativeObject as GH_DocumentObject);
         }
     }
 
@@ -238,9 +253,9 @@ public abstract class MenuReplacer : GH_DocumentObject
             return;
         }
 
-        if (Control.CurrentObject != null && selected.Contains(Control.CurrentObject))
+        if (Control.CurrentObject?.NativeObject is GH_DocumentObject current && selected.Contains(current))
         {
-            _lastAutoTarget = Control.CurrentObject;
+            _lastAutoTarget = current;
             return;
         }
 

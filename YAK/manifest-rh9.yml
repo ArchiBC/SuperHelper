@@ -4,7 +4,8 @@ version: $version
 authors:
 - ArchiBC
 description: >
-  A docked Grasshopper helper workspace for Rhino 9 and .NET 10.
+  One helper workspace package for Grasshopper 1 and Grasshopper 2 in Rhino 9
+  and .NET 10 on Windows and macOS.
 
   Includes an interactive Rhino viewport, native command input and history,
   component help, web help, parameter inspection, examples, development
@@ -12,9 +13,11 @@ description: >
 url: https://github.com/ArchiBC/SuperHelper
 keywords:
 - grasshopper
+- grasshopper2
 - help
 - panel
 - viewport
 - parameter
 - rhino9
+- guid:89447b4b-3888-4b3f-9c83-4f3a5416cb25
 icon: icon.png

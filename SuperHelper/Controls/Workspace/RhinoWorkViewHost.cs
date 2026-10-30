@@ -1,6 +1,7 @@
 using Eto.Forms;
 using Rhino;
 using Rhino.Display;
+using Rhino.DocObjects;
 using Rhino.UI.Controls;
 using System;
 using System.Reflection;
@@ -21,15 +22,26 @@ internal sealed class RhinoWorkViewHost : Panel
     private readonly RhinoDoc _document;
     private readonly Control _control;
     private readonly MethodInfo _refreshMethod;
+    private readonly uint _viewSerial;
+    private readonly RhinoViewport _fallbackViewport;
     private bool _resizePending;
+    private ViewportInfo _viewProjection;
+    private bool _restoreProjectionPending;
+    private bool _restoringProjection;
+    private bool _initialLoadComplete;
 
-    public RhinoView View { get; }
+    // Rhino's Mac handler resolves this serial on every access. Native reloads
+    // can replace the viewport pointer, so do not retain its managed wrapper.
+    public RhinoView View => _viewSerial == 0 ? null : RhinoView.FromRuntimeSerialNumber(_viewSerial);
 
-    public RhinoViewport Viewport { get; }
+    public RhinoViewport Viewport => _viewSerial == 0 ? _fallbackViewport : View?.MainViewport;
 
-    public bool IsInteractiveRhinoView => View != null;
+    public bool IsInteractiveRhinoView => _viewSerial != 0;
 
-    public RhinoWorkViewHost(RhinoDoc document)
+    public bool NeedsRecreation => _viewSerial != 0
+        && View?.Document?.RuntimeSerialNumber != _document.RuntimeSerialNumber;
+
+    public RhinoWorkViewHost(RhinoDoc document, ViewportInfo viewProjection = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         _document = document;
@@ -38,22 +50,35 @@ internal sealed class RhinoWorkViewHost : Panel
         {
             _control = control;
             _refreshMethod = refreshMethod;
-            View = view;
-            Viewport = viewport;
+            _viewSerial = view.RuntimeSerialNumber;
         }
         else
         {
             var fallback = new ViewportControl("SuperHelper");
             _control = fallback;
-            Viewport = fallback.Viewport;
+            _fallbackViewport = fallback.Viewport;
             _refreshMethod = fallback.GetType().GetMethod(nameof(Refresh), Type.EmptyTypes);
         }
 
         Content = _control;
         SetDefaultPerspectiveProjection();
-        _control.GotFocus += (_, _) => Activate(focusControl: false);
-        _control.MouseDown += (_, _) => Activate();
-        _control.MouseEnter += (_, _) =>
+        if (viewProjection != null)
+        {
+            _viewProjection = new ViewportInfo(viewProjection);
+            RestoreViewProjection();
+        }
+        // Rhino's ViewControl fits all geometry in OnLoadComplete, including
+        // when GH shows it again after a getter. Keep the latest camera, rather
+        // than the camera from before the prompt, across that native reload.
+        _control.Load += (_, _) => _restoreProjectionPending = _viewProjection != null;
+        _control.UnLoad += (_, _) => RememberViewProjection();
+        RhinoView.Modified += OnViewModified;
+        // Rhino's native NSView does not implement Eto's IMacControl event
+        // bridge. Attach Eto focus/mouse events to our wrapper on macOS.
+        Control eventSource = WorkspacePlatform.Current.ViewportEventSource(this, _control);
+        eventSource.GotFocus += (_, _) => Activate(focusControl: false);
+        eventSource.MouseDown += (_, _) => Activate();
+        eventSource.MouseEnter += (_, _) =>
         {
             if (RhinoCommand.InCommand())
             {
@@ -64,15 +89,112 @@ internal sealed class RhinoWorkViewHost : Panel
         Load += (_, _) => QueueViewportResize();
     }
 
+    public ViewportInfo CaptureViewProjection()
+    {
+        RememberViewProjection();
+        return _viewProjection == null ? null : new ViewportInfo(_viewProjection);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            RhinoView.Modified -= OnViewModified;
+            _viewProjection?.Dispose();
+            _viewProjection = null;
+        }
+        base.Dispose(disposing);
+    }
+
+    private void OnViewModified(object sender, ViewEventArgs e)
+    {
+        if (_viewSerial != 0 && e.View?.RuntimeSerialNumber == _viewSerial)
+        {
+            RememberViewProjection();
+        }
+    }
+
+    private void RememberViewProjection()
+    {
+        if (IsDisposed || NeedsRecreation || Viewport == null
+            || !_initialLoadComplete || _restoreProjectionPending || _restoringProjection)
+        {
+            return;
+        }
+        var projection = new ViewportInfo(Viewport);
+        if (!projection.IsValidCamera || !projection.IsValidFrustum)
+        {
+            projection.Dispose();
+            return;
+        }
+        _viewProjection?.Dispose();
+        _viewProjection = projection;
+    }
+
+    protected override void OnLoadComplete(EventArgs e)
+    {
+        // Container.OnLoadComplete loads its children after raising its own
+        // event. Wait for that whole call to return: the native child performs
+        // its ZoomExtents after raising its LoadComplete event. An async restore
+        // can run inside GH's getter loop and overwrite the user's new camera.
+        _restoreProjectionPending = _viewProjection != null;
+        base.OnLoadComplete(e);
+        if (!NeedsRecreation)
+        {
+            WorkspacePlatform.Current.ConfigureViewport(_control);
+        }
+        CompleteProjectionRestore();
+    }
+
+    private bool CompleteProjectionRestore()
+    {
+        if (IsDisposed || NeedsRecreation || !_control.Loaded
+            || (!_restoreProjectionPending && _initialLoadComplete))
+        {
+            return false;
+        }
+
+        _restoringProjection = true;
+        try
+        {
+            if (_restoreProjectionPending)
+            {
+                RestoreViewProjection();
+            }
+            _restoreProjectionPending = false;
+            _initialLoadComplete = true;
+        }
+        finally
+        {
+            _restoringProjection = false;
+        }
+        RememberViewProjection();
+        return true;
+    }
+
+    private void RestoreViewProjection()
+    {
+        if (_viewProjection != null && Viewport != null)
+        {
+            Viewport.SetViewProjection(_viewProjection, updateTargetLocation: false);
+            Viewport.SetCameraTarget(_viewProjection.TargetPoint, updateCameraLocation: false);
+        }
+    }
+
     public void Activate(bool focusControl = true)
     {
-        if (View != null && View.RuntimeSerialNumber != 0)
+        if (NeedsRecreation)
+        {
+            return;
+        }
+        if (View != null && View.RuntimeSerialNumber != 0
+            && _document.Views.ActiveView?.RuntimeSerialNumber != View.RuntimeSerialNumber)
         {
             _document.Views.ActiveView = View;
         }
         if (focusControl)
         {
-            _control.Focus();
+            WorkspacePlatform.Current.FocusViewport(_control);
         }
     }
 

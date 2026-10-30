@@ -1,6 +1,5 @@
 using Eto.Drawing;
 using Eto.Forms;
-using Grasshopper;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -130,7 +129,7 @@ internal sealed class FileManagerPanel : Panel
         try
         {
             return Directory.GetDirectories(directory)
-                .Concat(Directory.GetFiles(directory, "*.gh"))
+                .Concat(Directory.GetFiles(directory).Where(path => HelperHost.Current.DocumentExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)))
                 .ToArray();
         }
         catch
@@ -168,11 +167,11 @@ internal sealed class FileManagerPanel : Panel
 
         if (!asHops && SuperHelperPreferences.OpenDocumentWhenRightClick)
         {
-            Instances.DocumentEditor.ScriptAccess_OpenDocument(path);
+            HelperHost.Current.OpenDocument(path);
             return;
         }
 
-        using var example = new HelpExample(path);
-        await example.PasteFromArchive(asHops);
+        using var example = HelperHost.Current.CreateExample(path);
+        await example.PasteFromArchive(asHops && HelperHost.Current.CanUseHops(path));
     }
 }

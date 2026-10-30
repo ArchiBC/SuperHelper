@@ -1,4 +1,3 @@
-using Grasshopper;
 using System;
 
 namespace SuperHelper;
@@ -11,7 +10,7 @@ public static class SuperSetting
 
     public static bool Open
     {
-        get => Instances.Settings.GetValue(OpenSettingKey, true);
+        get => HelperHost.Current.Settings.GetValue(OpenSettingKey, true);
         set
         {
             if (Open == value)
@@ -19,7 +18,7 @@ public static class SuperSetting
                 return;
             }
 
-            Instances.Settings.SetValue(OpenSettingKey, value);
+            HelperHost.Current.Settings.SetValue(OpenSettingKey, value);
             OpenChanged?.Invoke(value);
         }
     }

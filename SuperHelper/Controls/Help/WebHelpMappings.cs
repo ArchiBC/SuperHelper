@@ -1,5 +1,3 @@
-using Grasshopper;
-using Grasshopper.Kernel;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -19,7 +17,7 @@ internal enum WebHelpSource
 
 internal static class WebHelpMappings
 {
-    private const string OfficialRoot = "https://www.rhino3d.com/docs/grasshopper/";
+    private static string OfficialRoot => HelperHost.Current.OfficialHelpRoot;
     private const string RhinoChinaRoot = "https://docs.rhino3d.com.cn/";
     private const string Gh100Root = "https://100-gh.com/";
     private const string EmbeddedRhinoChinaMap = "SuperHelper.Resources.urls.rhino-cn.json";
@@ -47,15 +45,15 @@ internal static class WebHelpMappings
     {
         get
         {
-            var value = Instances.Settings.GetValue(nameof(CurrentSource), (int)WebHelpSource.RhinoOfficial);
+            var value = HelperHost.Current.Settings.GetValue(nameof(CurrentSource), (int)WebHelpSource.RhinoOfficial);
             return Enum.IsDefined(typeof(WebHelpSource), value)
                 ? (WebHelpSource)value
                 : WebHelpSource.RhinoOfficial;
         }
-        set => Instances.Settings.SetValue(nameof(CurrentSource), (int)value);
+        set => HelperHost.Current.Settings.SetValue(nameof(CurrentSource), (int)value);
     }
 
-    private static string MappingDirectory => Path.Combine(Folders.SettingsFolder, "SuperHelper");
+    private static string MappingDirectory => Path.Combine(HelperHost.Current.SettingsDirectory, "SuperHelper");
 
     public static void Initialize()
     {
@@ -67,7 +65,7 @@ internal static class WebHelpMappings
 
         LoadEmbeddedMap(EmbeddedRhinoChinaMap, Maps[WebHelpSource.RhinoChina]);
         LoadEmbeddedMap(Embedded100GhMap, Maps[WebHelpSource.Gh100]);
-        LoadMap(Path.Combine(Folders.SettingsFolder, "urls.json"), Maps[WebHelpSource.Gh100]);
+        LoadMap(Path.Combine(HelperHost.Current.SettingsDirectory, "urls.json"), Maps[WebHelpSource.Gh100]);
         foreach (var source in Enum.GetValues<WebHelpSource>())
         {
             LoadMap(MapPath(source), Maps[source]);
@@ -80,7 +78,7 @@ internal static class WebHelpMappings
         MergeJson(json, Maps[WebHelpSource.Gh100]);
     }
 
-    public static string Resolve(GH_DocumentObject obj, string html)
+    public static string Resolve(HelpObject obj, string html)
     {
         Initialize();
         var key = obj.ComponentGuid.ToString();
@@ -101,7 +99,7 @@ internal static class WebHelpMappings
         };
     }
 
-    public static void SaveCurrent(GH_DocumentObject obj, string url)
+    public static void SaveCurrent(HelpObject obj, string url)
     {
         if (obj == null || !IsAbsoluteHttpUrl(url))
         {
@@ -122,9 +120,9 @@ internal static class WebHelpMappings
 
         WebHelpSource? source = uri.Host.ToLowerInvariant() switch
         {
-            "www.rhino3d.com" when uri.AbsolutePath.StartsWith("/docs/grasshopper/", StringComparison.OrdinalIgnoreCase)
+            "www.rhino3d.com" when (uri.AbsolutePath.StartsWith("/docs/grasshopper/", StringComparison.OrdinalIgnoreCase) || uri.AbsolutePath.StartsWith("/docs/grasshopper2/", StringComparison.OrdinalIgnoreCase))
                 => WebHelpSource.RhinoOfficial,
-            "rhino3d.com" when uri.AbsolutePath.StartsWith("/docs/grasshopper/", StringComparison.OrdinalIgnoreCase)
+            "rhino3d.com" when (uri.AbsolutePath.StartsWith("/docs/grasshopper/", StringComparison.OrdinalIgnoreCase) || uri.AbsolutePath.StartsWith("/docs/grasshopper2/", StringComparison.OrdinalIgnoreCase))
                 => WebHelpSource.RhinoOfficial,
             "docs.rhino3d.com.cn" => WebHelpSource.RhinoChina,
             "100-gh.com" or "www.100-gh.com" => WebHelpSource.Gh100,
@@ -139,8 +137,9 @@ internal static class WebHelpMappings
         SaveMap(source.Value);
     }
 
-    private static string BuildOfficialFallback(GH_DocumentObject obj)
+    private static string BuildOfficialFallback(HelpObject obj)
     {
+        if (!string.IsNullOrWhiteSpace(obj.OfficialUrl)) return obj.OfficialUrl;
         var category = CleanPathSegment(obj.Category);
         var page = Slug(obj.Name ?? obj.NickName);
         return string.IsNullOrEmpty(category) || string.IsNullOrEmpty(page)
@@ -148,7 +147,7 @@ internal static class WebHelpMappings
             : $"{OfficialRoot}{category}/{page}/";
     }
 
-    private static string BuildRhinoChinaFallback(GH_DocumentObject obj)
+    private static string BuildRhinoChinaFallback(HelpObject obj)
     {
         var category = CleanPathSegment(obj.Category);
         return string.IsNullOrEmpty(category)

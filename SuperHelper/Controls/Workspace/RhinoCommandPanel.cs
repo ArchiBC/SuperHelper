@@ -24,8 +24,9 @@ internal sealed class RhinoCommandPanel : Panel
     private readonly ComboBox _commandTextBox = new() { AutoComplete = true, ReadOnly = false };
     private readonly Button _runCommandButton = new() { Text = "Run", Width = 42, Height = 24 };
     private readonly List<string> _commandEntries = new();
-    private readonly Control _commandFallbackContent;
+    private Control _commandFallbackContent;
     private RhinoCommandMirrorHost _commandMirror;
+    private uint _commandMirrorDocumentSerial;
     private CommandHistoryPanel _commandHistoryPanel;
     private uint _commandHistoryDocumentSerial;
     private int _commandEntryIndex;
@@ -34,10 +35,7 @@ internal sealed class RhinoCommandPanel : Panel
     public RhinoCommandPanel(RhinoViewportPanel viewport)
     {
         _viewport = viewport ?? throw new ArgumentNullException(nameof(viewport));
-        _commandFallbackContent = BuildFallbackContent();
-        _commandRegionHost.Content = _commandFallbackContent;
         Content = _commandRegionHost;
-        WireCommandBar();
     }
 
     public void Start()
@@ -49,12 +47,12 @@ internal sealed class RhinoCommandPanel : Panel
     public void Stop()
     {
         UnsubscribeEvents();
-        DisposeCommandMirror();
     }
 
     public void Shutdown()
     {
         Stop();
+        DisposeCommandMirror();
         _commandHistoryHost.Content = null;
         _commandHistoryPanel?.Dispose();
         _commandHistoryPanel = null;
@@ -138,17 +136,20 @@ internal sealed class RhinoCommandPanel : Panel
             return;
         }
 
-        if (_commandMirror != null)
+        if (_commandMirror != null && _commandMirrorDocumentSerial == document.RuntimeSerialNumber)
         {
             _commandMirror.SetDocument(document);
             return;
         }
+        DisposeCommandMirror();
 
         if (RhinoCommandMirrorHost.TryCreate(document, out var mirror))
         {
             _commandMirror = mirror;
+            _commandMirrorDocumentSerial = document.RuntimeSerialNumber;
             _commandRegionHost.Content = null;
             _commandRegionHost.Content = mirror;
+            _commandHistoryHost.Content = null;
             _commandHistoryPanel?.Dispose();
             _commandHistoryPanel = null;
             _commandHistoryDocumentSerial = 0;
@@ -161,6 +162,11 @@ internal sealed class RhinoCommandPanel : Panel
             return;
         }
 
+        if (_commandFallbackContent == null)
+        {
+            _commandFallbackContent = BuildFallbackContent();
+            WireCommandBar();
+        }
         if (_commandRegionHost.Content != _commandFallbackContent)
         {
             _commandRegionHost.Content = null;
@@ -184,10 +190,7 @@ internal sealed class RhinoCommandPanel : Panel
         _commandRegionHost.Content = null;
         _commandMirror.Dispose();
         _commandMirror = null;
-        if (!_commandRegionHost.IsDisposed)
-        {
-            _commandRegionHost.Content = _commandFallbackContent;
-        }
+        _commandMirrorDocumentSerial = 0;
     }
 
     private void RunCommandFromBar()
@@ -238,6 +241,10 @@ internal sealed class RhinoCommandPanel : Panel
 
     private void UpdateCommandPrompt()
     {
+        if (_commandMirror != null)
+        {
+            return;
+        }
         var prompt = RhinoApp.CommandPrompt;
         _commandPromptLabel.Text = string.IsNullOrWhiteSpace(prompt) ? "Command:" : prompt;
     }
@@ -377,6 +384,10 @@ internal sealed class RhinoCommandPanel : Panel
 
     private void OnCommandPromptChanged(object sender, Rhino.UI.CommandPromptChangedEventArgs e)
     {
+        if (_commandMirror != null)
+        {
+            return;
+        }
         var prompt = string.IsNullOrWhiteSpace(e.PromptDefault)
             ? e.Prompt
             : $"{e.Prompt} <{e.PromptDefault}>";
@@ -393,6 +404,10 @@ internal sealed class RhinoCommandPanel : Panel
 
     private void OnCommandEnded(object sender, RhinoCommandEventArgs e) => InvokeOnEtoUi(() =>
     {
+        if (_commandMirror != null)
+        {
+            return;
+        }
         RefreshCommandSuggestions();
         UpdateCommandPrompt();
         UpdateCommandOptions(Array.Empty<CommandOptionSnapshot>());

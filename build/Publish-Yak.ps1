@@ -18,7 +18,7 @@ $package = $files[0]
 $metadata = Get-Content -LiteralPath $metadataFiles[0].FullName -Raw | ConvertFrom-Json
 $expectedVersion = [version]$metadata.ProjectVersion
 if ($tagVersion.Major -ne $expectedVersion.Major -or $tagVersion.Minor -ne $expectedVersion.Minor -or $tagVersion.Build -ne $expectedVersion.Build -or [Math]::Max(0,$tagVersion.Revision) -ne [Math]::Max(0,$expectedVersion.Revision)) { throw 'Release tag does not match the package version.' }
-if ($package.Name -ne $metadata.PackageFile -or $package.Name -notmatch '^superhelperr9-.*-rh9(?:_\d+)?-win\.yak$') { throw 'Unexpected package identity.' }
+if ($metadata.Platform -ne 'any' -or $package.Name -ne $metadata.PackageFile -or $package.Name -notmatch '^superhelperr9-.*-rh9(?:_\d+)?-any\.yak$') { throw 'Expected a cross-platform Rhino 9 package.' }
 if ((Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash -ne $metadata.PackageSHA256) { throw 'Downloaded package does not match the build metadata.' }
 function Get-PayloadHashes([string]$Path) {
     $archive = [IO.Compression.ZipFile]::OpenRead($Path)
@@ -34,6 +34,12 @@ function Get-PayloadHashes([string]$Path) {
 }
 $payload = Get-PayloadHashes $package.FullName
 if (-not $payload.ContainsKey('SuperHelper.gha') -or $payload['SuperHelper.gha'] -ne $metadata.GhaSHA256) { throw 'Packaged GHA does not match the build.' }
+if (@($metadata.Hosts).Count -ne 2 -or 'GH1' -notin $metadata.Hosts -or 'GH2' -notin $metadata.Hosts) { throw 'The release must support GH1 and GH2 in the same package.' }
+foreach ($name in @('SuperHelper.gha', 'SuperHelper.GH2.Loader.rhp', 'gh2/SuperHelper.GH2.rhp')) {
+    $expected = $metadata.PayloadHashes.PSObject.Properties[$name].Value
+    if (-not $expected -or -not $payload.ContainsKey($name) -or $payload[$name] -ne $expected) { throw ('Unified payload verification failed: ' + $name) }
+}
+if ($payload.ContainsKey('SuperHelper.GH2.rhp')) { throw 'GH2 must be nested behind the shared loader.' }
 Write-Output ('Validated package: ' + $package.Name)
 if (-not $Publish) { Write-Output 'Validation only; GitHub and Yak were not contacted.'; return }
 if ([string]::IsNullOrWhiteSpace($env:YAK_TOKEN) -or [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { throw 'Both YAK_TOKEN and GH_TOKEN are required for publishing.' }

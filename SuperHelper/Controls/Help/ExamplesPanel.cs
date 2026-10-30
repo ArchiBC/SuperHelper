@@ -1,9 +1,9 @@
 using Eto.Drawing;
 using Eto.Forms;
-using Grasshopper.Kernel;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 
 namespace SuperHelper;
@@ -11,7 +11,7 @@ namespace SuperHelper;
 internal sealed class ExamplesPanel : Panel
 {
     private readonly ObjectSummaryPanel _objectSummary = new();
-    private readonly ObservableCollection<HelpExample> _examples = new();
+    private readonly ObservableCollection<IHelpExample> _examples = new();
     private readonly GridView _grid = new();
     private readonly Panel _exampleContent = new();
     private readonly StackLayout _cards = new()
@@ -21,28 +21,38 @@ internal sealed class ExamplesPanel : Panel
         HorizontalContentAlignment = HorizontalAlignment.Stretch,
     };
     private readonly Slider _heightSlider = new() { MinValue = 20, MaxValue = 150, Value = 55 };
-    private GH_DocumentObject _currentObject;
+    private HelpObject _currentObject;
     private bool _editMode;
+    private readonly List<Action> _cardSubscriptions = new();
+
+    private void ClearCards()
+    {
+        foreach (var unsubscribe in _cardSubscriptions) unsubscribe();
+        _cardSubscriptions.Clear();
+        var controls = _cards.Items.Select(item => item.Control).Where(control => control != null).ToArray();
+        _cards.Items.Clear();
+        foreach (var control in controls) control.Dispose();
+    }
 
     public ExamplesPanel()
     {
         Content = BuildContent();
     }
 
-    public void SetCurrentObject(GH_DocumentObject obj)
+    public void SetCurrentObject(HelpObject obj)
     {
         _currentObject = obj;
         _objectSummary.SetObject(obj);
     }
 
-    public void SetExamples(GH_DocumentObject obj, IEnumerable<string> paths)
+    public void SetExamples(HelpObject obj, IEnumerable<string> paths)
     {
         SetCurrentObject(obj);
         DisposeExamples();
         _examples.Clear();
         foreach (var path in paths ?? Enumerable.Empty<string>())
         {
-            _examples.Add(new HelpExample(path));
+            _examples.Add(HelperHost.Current.CreateExample(path));
         }
         RefreshContent();
     }
@@ -54,11 +64,11 @@ internal sealed class ExamplesPanel : Panel
             return;
         }
 
-        MenuReplacer.UrlExDict[_currentObject.ComponentGuid.ToString()] = _examples
+        HelperHost.Current.Examples.Items[_currentObject.ComponentGuid.ToString()] = _examples
             .Select(example => example.Path)
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .ToArray();
-        MenuReplacer.SaveUrlExToJson();
+        HelperHost.Current.Examples.Save();
     }
 
     public void Shutdown()
@@ -75,19 +85,19 @@ internal sealed class ExamplesPanel : Panel
         _grid.Columns.Add(new GridColumn
         {
             HeaderText = "Path",
-            DataCell = new TextBoxCell(nameof(HelpExample.Path)),
+            DataCell = new TextBoxCell(nameof(IHelpExample.Path)),
             Editable = true,
             AutoSize = true,
         });
         _grid.Columns.Add(new GridColumn
         {
             HeaderText = "Name",
-            DataCell = new TextBoxCell(nameof(HelpExample.FileName)),
+            DataCell = new TextBoxCell(nameof(IHelpExample.FileName)),
             AutoSize = true,
         });
         _grid.CellDoubleClick += async (_, e) =>
         {
-            if (e.Item is HelpExample example)
+            if (e.Item is IHelpExample example)
             {
                 await example.PasteFromArchive(false);
             }
@@ -125,15 +135,16 @@ internal sealed class ExamplesPanel : Panel
 
     private void RefreshContent()
     {
+        ClearCards();
         if (_editMode)
         {
             var add = new Button { Text = "Add" };
             var remove = new Button { Text = "Remove" };
             var save = new Button { Text = "Save" };
-            add.Click += (_, _) => _examples.Add(new HelpExample());
+            add.Click += (_, _) => _examples.Add(HelperHost.Current.CreateExample());
             remove.Click += (_, _) =>
             {
-                if (_grid.SelectedItem is not HelpExample example)
+                if (_grid.SelectedItem is not IHelpExample example)
                 {
                     return;
                 }
@@ -152,7 +163,6 @@ internal sealed class ExamplesPanel : Panel
             return;
         }
 
-        _cards.Items.Clear();
         foreach (var example in _examples)
         {
             _cards.Items.Add(BuildCard(example));
@@ -166,7 +176,7 @@ internal sealed class ExamplesPanel : Panel
         };
     }
 
-    private Control BuildCard(HelpExample example)
+    private Control BuildCard(IHelpExample example)
     {
         var height = _heightSlider.Value;
         var thumbnail = new ImageView { Height = height, Width = Math.Max(70, height * 2) };
@@ -176,14 +186,17 @@ internal sealed class ExamplesPanel : Panel
         var description = new Label { Wrap = WrapMode.Word, TextAlignment = TextAlignment.Center };
         void Update()
         {
-            thumbnail.Image = EtoImageUtilities.FromBitmap(example.Thumbnail);
-            icon.Image = EtoImageUtilities.FromBitmap(example.Icon);
+            if (thumbnail.IsDisposed) return;
+            thumbnail.Image = example.ThumbnailImage;
+            icon.Image = example.IconImage;
             name.Text = example.FileName ?? string.Empty;
             author.Text = example.Author ?? string.Empty;
             description.Text = example.Description ?? string.Empty;
         }
         Update();
-        example.PropertyChanged += (_, _) => Application.Instance?.AsyncInvoke(Update);
+        PropertyChangedEventHandler updated = (_, _) => Application.Instance?.AsyncInvoke(Update);
+        example.PropertyChanged += updated;
+        _cardSubscriptions.Add(() => example.PropertyChanged -= updated);
 
         var card = new GroupBox
         {
@@ -229,7 +242,8 @@ internal sealed class ExamplesPanel : Panel
             }
             else if (e.Buttons.HasFlag(MouseButtons.Primary))
             {
-                await example.PasteFromArchive(false);
+                if (!await HelperHost.Current.DragExample(card, example))
+                    await example.PasteFromArchive(false);
             }
         };
         return card;
@@ -237,6 +251,7 @@ internal sealed class ExamplesPanel : Panel
 
     private void DisposeExamples()
     {
+        ClearCards();
         foreach (var example in _examples)
         {
             example.Dispose();

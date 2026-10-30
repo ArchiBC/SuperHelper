@@ -6,6 +6,7 @@
 
 - `main`：默认分支，保存已合入的 R9 代码。
 - `develop`：日常开发分支；需要发版时创建 `develop → main` PR。
+- `mac`：从最新 `develop` 分出的 macOS 兼容分支，单独验证平台输入和原生控件；修复完成后再评估合回 `develop`。
 - `legacy/rhino8`：原 `master` 的 R8 最后版本（`7e0d9d7`，产品版本 `2.0.3.1`），保留代码和历史安装包，不参与 R9 发版。
 
 本地默认在 `develop` 工作。历史 YAK 目录不参与当前构建；新的包由 Actions artifacts 和 GitHub Release 保存。
@@ -24,12 +25,14 @@
 发版必须通过 `develop → main` PR 合并。直接推送到 `main` 只会构建，不会发版。
 构建和发布都固定到该 PR 的合并提交 SHA，后续分支移动不会改变发布内容。
 
-仅支持 net10.0、版本一致的正式 RhinoCommon/Grasshopper 9.x，生成 `rh9_0-win` 分发包。
+支持 net10.0、版本一致的正式 RhinoCommon / Grasshopper / Grasshopper2 9.x，只生成一个 `SuperHelperR9` 的 `rh9_0-any` 包，同时支持 GH1 / GH2 和 Windows / macOS。发布前必须通过 Windows 打包校验和三个项目的 macOS Release 构建。
+
+包顶层包含 GH1 的 `SuperHelper.gha` 和公共 `SuperHelper.GH2.Loader.rhp`，GH2 实现在 `gh2/SuperHelper.GH2.rhp`。加载器只依赖 RhinoCommon，待用户打开 GH2 后加载其实现，不在 Rhino 启动时打开 GH2。两宿主使用同一套九个 Rhino 面板定义，由真实的 Rhino 加载器通过公共 Panels API 注册；设置和文档仍各自保存，菜单可往返切换。关闭 Rhino 前清理两宿主私有容器，不能把 GH2 扩展 ID 当作 Rhino 面板的插件所有者。
 
 ## 发版步骤
 
 1. 在 `develop` 完成改动和必要的 Rhino 9 实机回归。
-2. 同时更新 `SuperHelper/SuperHelper.csproj` 的 `Version` 和 `SuperHelperInfo.cs` 的 GH AssemblyInfo 版本。
+2. 同步三个项目的 `Version`：`SuperHelper`、`SuperHelper.GH2`、`SuperHelper.GH2.Loader`，并保持 GH AssemblyInfo 版本一致。
 3. 推送 `develop`，确认构建通过。
 4. 创建并合并 `develop → main` PR。工作流自动读取产品版本，例如 `2.1.1.0` 对应标签 `v2.1.1`。
 5. 检查 Actions 的 package / publish 结果、GitHub Release 附件与公共 Yak 源。
@@ -48,8 +51,59 @@ $yakOutputRoot = Join-Path $PWD.Path ('artifacts/yak-' + [DateTime]::Now.ToStrin
 ./build/Build-Yak.ps1 -RepositoryRoot $PWD.Path `
   -YakExecutable 'C:\Program Files\Rhino 9\System\yak.exe' `
   -OutputRoot $yakOutputRoot
-./build/Publish-Yak.ps1 -PackageDirectory $yakOutputRoot -ReleaseTag v2.1.1
+./build/Publish-Yak.ps1 -PackageDirectory $yakOutputRoot -ReleaseTag v2.1.2
 ```
+
+macOS 使用 Rhino 自带的 Yak，其他参数相同：
+
+```powershell
+./build/Build-Yak.ps1 -RepositoryRoot $PWD.Path `
+  -YakExecutable '/Applications/Rhino 9.app/Contents/Resources/bin/yak' `
+  -OutputRoot (Join-Path $PWD.Path 'artifacts/yak-mac') -ReleaseTag v2.1.2
+```
+
+## Rhino 实机回归
+
+构建或安装插件后重启 Rhino，打开独立测试模型并启动 Grasshopper。运行 Rhino 的 `_-RunPythonScript`，选择仓库中的 `build/Test-RhinoCompatibility.py`。脚本使用 Rhino 自带的 IronPython，不需要额外 Python 依赖；在 `artifacts/rhino-compatibility.json` 保存环境、程序集版本及逐项结果。
+
+回归覆盖侧栏尺寸、视口及活动状态、原生命令镜像、七个帮助页、区块显示切换、左右停靠、隐藏重开、组件帮助命令/F1、参数及开发信息、命令建点和文件列表。Mac 额外检查原生命令输入的焦点绑定及绘图 NSView 的 first responder。脚本最后连续观察 15 秒并重复相同尺寸的布局，要求始终保留同一个有效视口。脚本会恢复原 GH 文档，并删除命令测试创建的点。
+
+鼠标取点必须另跑 `build/Test-GrasshopperPointPrompt.py`，在临时 Pt 参数发起的取点提示中点击 SuperHelper 的嵌入视口。结果写入 `artifacts/grasshopper-point-prompt.json`；结束或取消后恢复原 GH 文档。只有该报告 `pending=false` 且 `passed=true`，才算通过 GH 持久数据取点。命令区还需手动检查普通输入、坐标输入、回车及 Esc，另查分隔条拖拽和窗口缩放。
+
+镜头另跑 `build/Test-ViewportCamera.py`：脚本检查重复刷新、隐藏重开、原生视口替换，以及 GH 取点期间移动镜头后结束取点，结果写入 `artifacts/viewport-camera.json`。脚本通过原生命令编辑器提交测试坐标，不代替鼠标点击验证；结束后恢复原 GH 文档和镜头。
+
+2026-10-29 实测：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402 / Rhino 自带 .NET 10.0.2。用户手动确认 GH 的 Set one Point 能直接在嵌入视口取点，随后发现取点结束后镜头回退。修复后程序集 SHA256 `c9f3ad43842a192b4cf52a8be09805ec63fd63279050ff913efcf4e247a9ed20` 的 34 项功能检查、9 项镜头回归均通过；取点中改变的位置、目标、方向、上方向及镜头长度在结束取点并等待空闲后保持一致，左右切换导致原生视口重建后也保留镜头。原生命令区粘贴坐标并回车正确创建 `(11,22,33)` 的点，逐键输入及 Esc 仍在对照验证；兼容版本保持未发布。
+
+### 平台实现边界
+
+`Controls/Workspace/Platforms` 中的 `IWorkspacePlatform` 分别由 `WindowsWorkspacePlatform` 和 `MacWorkspacePlatform` 实现，隔离窗口标识、原生视口事件和焦点、GH 对命令输入的键盘预处理。帮助、参数解析、文件管理与设置继续共享。两端均保留一体式原生命令区，Mac 不以独立输入栏替代它。
+
+Rhino 的停靠区 `RecalcLayout` 会重新挂载全部区块，在 Mac 上可能销毁嵌入视口；相同尺寸的布局不得重复调用它。区块总高度必须包含 Rhino 分隔条的宽度，避免每次布局又改变末尾区块尺寸。Mac 的原生视口需聚焦内部绘图 NSView，不能对其外层 Eto 包装控件直接调用 Focus。
+
+刷新已有视口不得执行 ZoomExtents。原生 ViewControl 自身在 LoadComplete 中也会缩放全部，因此宿主需持续保存最后的镜头投影，在重新加载后恢复，并在同一文档的视口重建时传递该状态；新文档首次加载仍使用原生自动缩放。
+
+镜头恢复必须在宿主 `OnLoadComplete` 调用 `base.OnLoadComplete` 返回后同步完成。Eto 容器先触发自己的事件、再加载子控件，Rhino 子控件又在触发事件后执行 ZoomExtents；绑定事件或异步恢复都会留下覆盖取点中新镜头的时序窗口。
+
+macOS 组件帮助通过 View → SuperHelper Component Help、F1 或工具栏右键菜单的 Help for Selected Component 打开；Auto Target 也会随选择更新。GH 自带右键 Help 保留原生行为。Mac 不执行旧的 .NET 方法内存替换。
+
+Mac 的 GH1 工具栏按钮使用 Rhino 的原生 NSSegmentedControl，不会把右键传给 WinForms MouseDown。`MacToolbarContextMenuBinding` 将共用的菜单接到按钮的原生 NSView.Menu，打开时同步各区块的勾选状态，按钮或编辑器关闭时释放。2026-10-30 冷启动后已实际验证反复右键、Command 区块隐藏及恢复；左键仍切换工作区显示。
+
+### Mac GH 画布滚轮方向
+
+SuperHelper 的 Settings → General → GH Canvas Zoom → Reverse wheel direction 可单独反转 GH 画布的滚轮缩放。Rhino 视口方向和帮助页滚动不随此设置改变。触控板平移和惯性仍交由 GH 原生处理；反向缩放复用 GH 的 DollyZoom、鼠标锚点和缩放范围，不改 Rhino 全局 ZoomScale。
+
+运行 `build/Test-CanvasWheelZoom.py` 验证反向、恢复、不同滚轮增量、鼠标锚点、缩放边界、重复切换和设置恢复，报告位于 `artifacts/canvas-wheel-zoom.json`。脚本在调用 GH 原生处理器的模拟输入阶段临时关闭 CanvasTrackpadGestures，结束时恢复。Mac 的 NSEvent.Phase/MomentumPhase 只能对 ScrollWheel 事件读取；非滚轮事件会触发原生异常并退出 Rhino，不能依靠 .NET try/catch 处理。反向绑定先判断事件类型，只有真实触控板平移才转发原生处理器，其余缩放直接使用 GH 公共接口。
+
+2026-10-30：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402，程序集 SHA256 `1545a73012b113952ae2be6189e377afc109b8c4316546289059339837f4aef9` 通过 24 项滚轮回归及本地 Release/Yak 内容校验。真实 ScrollWheel 输入已确认：原生设置下同一向上滚动使画布 200% → 100%，启用独立反向后使画布 100% → 193%；嵌入视口镜头与 Rhino ZoomScale 保持不变。本机启用独立反向，保留 Rhino 原有方向。物理触控板平移、惯性及捏合仍需人工验证，脚本通过不代表这些手势已验收。此构建仅安装到本机测试，没有发布发行包。
+
+### Win / GH2 接续
+
+mac 分支的起点是 `origin/develop` 的 `d97933a`。2026-10-30 已接入 `origin/win` 的 `63d3070`，复用共享界面和宿主接口，并增加 GH2 的 Mac 原生输入、独立安装入口及实际界面测试。`win` 现已同步 `mac` 的 `da8decf` 并调整共用面板及菜单切换。安装包和详细验证范围见 [GH2 Mac 兼容说明](../docs/gh2-mac.md) 和 [GH2 Windows 验证](../docs/gh2-windows.md)。GH1 与 GH2 共用九个面板定义，测试和方向设置仍分别验证；物理触控板和可选 Hops 服务不由普通滚轮或托管测试代替。
+
+当前两种兼容工作流都校验单个全宿主通用包；`Build-GH2.ps1` 只是 `Build-Yak.ps1` 的兼容入口。原先独立 GH2 的 win/mac manifest 已移除，发布前校验同时检查 GH1、GH2 和加载器三个文件的哈希，不能误发仅有 GH1 的包。统一包在 Windows 已通过两种宿主打开顺序的冷启动、菜单切换、原生所有者归属、主动清理和直接退出测试；Mac 统一包实机验收仍待补齐。
+2026-10-30 用户确认 Windows 验证无问题，授权将默认全宿主、全平台通用包作为 `2.1.2` 发布；Mac 新包未重跑的实机专项仍保留原始验证状态，Windows 打包和 macOS 编译门禁照常执行。
+
+后续专项脚本：`Test-GH2WheelDirection.py` 对照 GH1 / GH2 原生方向（含自然滚动），`Test-PanelRegistration.py` 检查九个共用定义、重复注册及工作区内容归属，`Test-HostSwitching.py` 检查菜单入口、往返切换、文档及开关设置保留，`Test-GH2ExampleDrag.py` 检查真鼠标拖放与取消，`Test-MacTrackpad.py` 记录真实平移、惯性和捏合，`Test-HopsCompatibility.py` 对照 GH1 / GH2 的真实 Hops HTTP 求解。GH2 自然滚动方向及 Mac 异步拖放生命周期沿用 Mac 分支修复，面板标题不再增加 `(GH2)`。Hops 本地 Python 服务可用 `tests/hops/server.py` 复现，远程 Rhino.Compute 部署另行验证；各专项的环境、哈希和结果见兼容说明。
 
 第二条脚本默认只做版本、文件哈希及 GHA 内容校验，不联系 GitHub 或 Yak。
 自动发布任务额外传入 `-Publish -CreateRelease -TargetCommit <合并提交完整 SHA>`；通过全部包检查后才创建 Release。

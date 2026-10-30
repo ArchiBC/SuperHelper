@@ -1,5 +1,4 @@
 using Eto.Forms;
-using Grasshopper.Kernel;
 
 namespace SuperHelper;
 
@@ -11,9 +10,11 @@ internal sealed class ObjectInfoPanel : Panel
         Load += (_, _) => FitContent();
     }
 
-    public void SetObject(GH_DocumentObject obj)
+    public void SetObject(HelpObject obj)
     {
-        Content = obj == null ? null : DocumentObjectInfoBuilder.Build(obj);
+        var previous = Content;
+        Content = obj == null ? null : obj.BuildParameterInfo?.Invoke();
+        previous?.Dispose();
         FitContent();
     }
 

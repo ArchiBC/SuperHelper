@@ -5,6 +5,10 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SuperHelper", "SuperHelper\SuperHelper.csproj", "{304FD520-4FDD-4483-AC37-35D6DB85FD77}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SuperHelper.GH2", "SuperHelper.GH2\SuperHelper.GH2.csproj", "{1D2DA414-CC52-4B2D-8760-BDD7D39C3319}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SuperHelper.GH2.Loader", "SuperHelper.GH2.Loader\SuperHelper.GH2.Loader.csproj", "{EDCA8A51-5AE7-4802-9E69-B4C33AFCD507}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +19,14 @@ Global
 		{304FD520-4FDD-4483-AC37-35D6DB85FD77}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{304FD520-4FDD-4483-AC37-35D6DB85FD77}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{304FD520-4FDD-4483-AC37-35D6DB85FD77}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D2DA414-CC52-4B2D-8760-BDD7D39C3319}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D2DA414-CC52-4B2D-8760-BDD7D39C3319}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D2DA414-CC52-4B2D-8760-BDD7D39C3319}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D2DA414-CC52-4B2D-8760-BDD7D39C3319}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EDCA8A51-5AE7-4802-9E69-B4C33AFCD507}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDCA8A51-5AE7-4802-9E69-B4C33AFCD507}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDCA8A51-5AE7-4802-9E69-B4C33AFCD507}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDCA8A51-5AE7-4802-9E69-B4C33AFCD507}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

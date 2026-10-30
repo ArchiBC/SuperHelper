@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
-using Grasshopper;
 
 namespace SuperHelper;
 
@@ -20,13 +20,16 @@ internal static class HelpWorkspaceStateStore
 	{
 		try
 		{
-			string json = Instances.Settings.GetValue(SettingKey, string.Empty);
+			string json = HelperHost.Current.Settings.GetValue(SettingKey, string.Empty);
 			if (string.IsNullOrWhiteSpace(json))
 			{
 				return new HelpWorkspaceState();
 			}
 
-			return JsonSerializer.Deserialize<HelpWorkspaceState>(json) ?? new HelpWorkspaceState();
+			var state = JsonSerializer.Deserialize<HelpWorkspaceState>(json) ?? new HelpWorkspaceState();
+			state.PanelIds = (state.PanelIds ?? new()).Select(EmbeddedRhinoPanelIds.Normalize).Distinct().ToList();
+			state.SelectedPanelId = EmbeddedRhinoPanelIds.Normalize(state.SelectedPanelId);
+			return state;
 		}
 		catch (Exception)
 		{
@@ -38,7 +41,7 @@ internal static class HelpWorkspaceStateStore
 	{
 		try
 		{
-			Instances.Settings.SetValue(SettingKey, JsonSerializer.Serialize(state));
+			HelperHost.Current.Settings.SetValue(SettingKey, JsonSerializer.Serialize(state));
 			return true;
 		}
 		catch (Exception)

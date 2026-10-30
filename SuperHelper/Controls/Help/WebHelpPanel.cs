@@ -1,6 +1,5 @@
 using Eto.Drawing;
 using Eto.Forms;
-using Grasshopper.Kernel;
 using System;
 
 namespace SuperHelper;
@@ -10,17 +9,17 @@ internal sealed class WebHelpPanel : Panel
     private readonly WebView _webView = new();
     private readonly TextBox _address = new();
     private readonly DropDown _source = new();
-    private GH_DocumentObject _currentObject;
+    private HelpObject _currentObject;
 
     public WebHelpPanel()
     {
         WebViewUtilities.Configure(_webView);
         Content = BuildContent();
-        _address.Text = "http://100-gh.com/";
+        _address.Text = HelperHost.Current.OfficialHelpRoot;
         _webView.Url = new Uri(_address.Text);
     }
 
-    public void SetObject(GH_DocumentObject obj, string webUrl, bool navigate)
+    public void SetObject(HelpObject obj, string webUrl, bool navigate)
     {
         _currentObject = obj;
         _address.Text = webUrl ?? string.Empty;
@@ -51,7 +50,7 @@ internal sealed class WebHelpPanel : Panel
             }
 
             WebHelpMappings.CurrentSource = (WebHelpSource)_source.SelectedIndex;
-            MenuReplacer.RefreshCurrentObject();
+            HelperHost.Current.RefreshHelp();
         };
 
         back.Click += (_, _) =>

@@ -8,6 +8,9 @@ on:
       - '.github/workflows/yak.yml'
       - 'build/**'
       - 'SuperHelper/**'
+      - 'SuperHelper.GH2/**'
+      - 'SuperHelper.GH2.Loader/**'
+      - 'SuperHelper.sln'
       - 'YAK/manifest-rh9.yml'
       - 'LICENSE'
   pull_request:
@@ -76,6 +79,32 @@ jobs:
             ${{ steps.package.outputs.package_path }}
             ${{ steps.package.outputs.metadata_path }}
           if-no-files-found: error
+  mac-build:
+    needs: package
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merge_commit_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        id: dotnet
+        with:
+          dotnet-version: '10.0.x'
+      - name: Select .NET 10 SDK
+        env:
+          DOTNET_SDK_VERSION: ${{ steps.dotnet.outputs.dotnet-version }}
+        run: |
+          if (-not (Test-Path -LiteralPath global.json)) {
+            @{ sdk = @{ version = $env:DOTNET_SDK_VERSION; rollForward = 'latestPatch' } } |
+              ConvertTo-Json -Depth 3 | Set-Content -LiteralPath global.json -Encoding utf8
+          }
+      - name: Verify macOS Release build
+        run: |
+          dotnet restore SuperHelper.sln --source 'https://api.nuget.org/v3/index.json'
+          if ($LASTEXITCODE -ne 0) { throw 'macOS NuGet restore failed.' }
+          dotnet build SuperHelper.sln -c Release --no-restore -v minimal
+          if ($LASTEXITCODE -ne 0) { throw 'macOS Release build failed.' }
   publish:
     if: >-
       github.repository == 'ArchiBC/SuperHelper' &&
@@ -84,7 +113,7 @@ jobs:
       github.event.pull_request.base.ref == 'main' &&
       github.event.pull_request.head.ref == 'develop' &&
       github.event.pull_request.head.repo.full_name == github.repository
-    needs: package
+    needs: [package, mac-build]
     runs-on: windows-latest
     permissions:
       contents: write
