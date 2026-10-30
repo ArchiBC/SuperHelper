@@ -1,6 +1,8 @@
 using Eto.Forms;
+#if !GRASSHOPPER2
 using Grasshopper;
 using Grasshopper.GUI;
+#endif
 using Rhino;
 using System;
 using System.Diagnostics;
@@ -162,7 +164,17 @@ internal sealed class MacWorkspacePlatform : IWorkspacePlatform
         Process.Start(start)?.Dispose();
     }
 
-    public IDisposable BindCommandInput(TextBox input) => new CommandInputFocus(input);
+    public IDisposable BindCommandInput(TextBox input)
+    {
+#if GRASSHOPPER2
+        // GH2 uses Eto throughout and has no GH1 WinForms key-preview filter.
+        return null;
+#else
+        return new CommandInputFocus(input);
+#endif
+    }
+
+#if !GRASSHOPPER2
     public IDisposable BindCanvasInput(Grasshopper.GUI.Canvas.GH_Canvas canvas) => MacCanvasWheelBinding.TryCreate(canvas);
 
     private sealed class CommandInputFocus : IDisposable
@@ -207,4 +219,5 @@ internal sealed class MacWorkspacePlatform : IWorkspacePlatform
             OnLostFocus(null, EventArgs.Empty);
         }
     }
+#endif
 }

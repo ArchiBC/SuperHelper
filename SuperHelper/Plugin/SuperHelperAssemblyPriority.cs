@@ -20,6 +20,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
     private static SuperHelperAssemblyPriority _instance;
 
     private readonly HashSet<ToolStripButton> _workspaceButtons = [];
+    private readonly Dictionary<ToolStripButton, IDisposable> _workspaceContextBindings = [];
     private readonly HashSet<ToolStripMenuItem> _workspaceCommands = [];
     private GH_DocumentEditor _editor;
     private IDisposable _canvasInputBinding;
@@ -28,6 +29,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
 
     public override GH_LoadingInstruction PriorityLoad()
     {
+        HelperHost.Current = new Grasshopper1Host();
         _instance = this;
         SuperSetting.OpenChanged += OnOpenChanged;
         Instances.CanvasCreated += OnCanvasCreated;
@@ -81,7 +83,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
     private void OnCanvasCreated(GH_Canvas canvas)
     {
         Instances.CanvasCreated -= OnCanvasCreated;
-        _canvasInputBinding = WorkspacePlatform.Current.BindCanvasInput(canvas);
+        _canvasInputBinding = (WorkspacePlatform.Current as MacWorkspacePlatform)?.BindCanvasInput(canvas);
         if (Instances.DocumentEditor is { } editor)
         {
             InitializeEditor(editor);
@@ -126,7 +128,12 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
         };
         // GH can cancel FormClosing to hide its editor. Keep its workspace
         // alive until the form really closes so reopening can reuse it.
-        editor.FormClosed += (_, _) => MenuReplacer.Control.ShutdownWorkspace();
+        editor.FormClosed += (_, _) =>
+        {
+            foreach (var binding in _workspaceContextBindings.Values) binding.Dispose();
+            _workspaceContextBindings.Clear();
+            MenuReplacer.Control.ShutdownWorkspace();
+        };
         Rhino.RhinoDoc.EndOpenDocument += (_, _) => RefreshViewport();
         Rhino.RhinoDoc.EndSaveDocument += (_, _) => RefreshViewport();
     }
@@ -184,6 +191,11 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
         button.MouseDown -= ToolbarButtonMouseDown;
         button.MouseDown += ToolbarButtonMouseDown;
         _workspaceButtons.Add(button);
+        if (Rhino.Runtime.HostUtils.RunningOnOSX && !_workspaceContextBindings.ContainsKey(button))
+        {
+            var binding = MacToolbarContextMenuBinding.TryCreate(button, BuildWorkspaceContextMenu);
+            if (binding != null) _workspaceContextBindings.Add(button, binding);
+        }
     }
 
     private void EnsureViewMenuCommand(GH_DocumentEditor editor)
@@ -254,6 +266,12 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
         menu.Items.Add(CreateMenuItem("Restore Default Workspace", control => control.RestoreDefaultWorkspace()));
         menu.Items.Add(CreateMenuItem("Use Current as Default", control => control.UseCurrentWorkspaceAsDefault()));
         menu.Items.Add(CreateMenuItem("Restore Built-in Workspace", control => control.RestoreBuiltInWorkspace()));
+        menu.Opened += (_, _) =>
+        {
+            foreach (var item in menu.Items.OfType<ToolStripMenuItem>())
+                if (item.Tag is EmbeddedWorkspaceSection section)
+                    item.Checked = MenuReplacer.Control.IsWorkspaceSectionVisible(section);
+        };
         return menu;
     }
 
@@ -264,6 +282,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
         {
             Checked = control.IsWorkspaceSectionVisible(section),
             CheckOnClick = false,
+            Tag = section,
         };
         item.Click += (_, _) =>
         {

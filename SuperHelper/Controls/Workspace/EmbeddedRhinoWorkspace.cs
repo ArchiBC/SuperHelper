@@ -26,6 +26,10 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private const BindingFlags StaticFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
+	#if GRASSHOPPER2
+	private static readonly Guid PlugInId = new("01A71230-29B2-4B47-A8F0-B141A36A7F2A");
+	private static readonly Guid[] LegacyDockBarIds = [];
+#else
 	private static readonly Guid PlugInId = new Guid("B45A29B1-4343-4035-989E-044E8580D9CF");
 
 	private static readonly Guid[] LegacyDockBarIds =
@@ -34,6 +38,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		new("F7AAB540-D083-4082-8509-52F74054C8B1"),
 		new("C30FC4B2-9235-42BD-9966-F3DDD020225C"),
 	};
+#endif
 
 	// The embedded GH workspace is transient. Reusing stable dock-bar ids makes
 	// Rhino restore them into its global layout and then rejects the next private

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>2.1.2.0</Version>
+    <Title>SuperHelperGH2</Title>
+    <InformationalVersion>2.1.2</InformationalVersion>
+    <Description>SuperHelper workspace for Grasshopper 2 on Rhino 9</Description>
+    <Authors>ArchiBC</Authors>
+    <RootNamespace>SuperHelper</RootNamespace>
+    <TargetExt>.rhp</TargetExt>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <DefineConstants>$(DefineConstants);GRASSHOPPER2</DefineConstants>
+    <NoWarn>NU1701</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Grasshopper2" Version="9.0.26300.9401" ExcludeAssets="runtime" />
+    <PackageReference Include="RhinoCommon" Version="9.0.26300.9401" ExcludeAssets="runtime" />
+    <PackageReference Include="Eto.Serialization.Xaml" Version="2.13.0" ExcludeAssets="runtime" />
+    <PackageReference Include="System.Resources.Extensions" Version="10.0.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Compile the same feature controls into each host. No GH1 assembly is loaded by this extension. -->
+    <Compile Include="..\SuperHelper\Controls\**\*.cs"
+             Exclude="..\SuperHelper\Controls\Help\HelpExample.cs;..\SuperHelper\Controls\Help\DocumentObjectInfoBuilder.cs;..\SuperHelper\Controls\Help\ParameterInfoBuilder.cs;..\SuperHelper\Controls\Workspace\GrasshopperPanelHost.cs;..\SuperHelper\Controls\Workspace\Platforms\MacCanvasWheelBinding.cs"
+             LinkBase="Shared\Controls" />
+    <Compile Include="..\SuperHelper\Infrastructure\EtoImageUtilities.cs;..\SuperHelper\Infrastructure\RhinoWindowRuntime.cs;..\SuperHelper\Integration\HelperHost.cs;..\SuperHelper\Plugin\SuperHelperPreferences.cs;..\SuperHelper\Plugin\SuperSetting.cs;..\SuperHelper\Properties\Resources.Designer.cs;..\SuperHelper\Properties\AssemblyInfo.cs" LinkBase="Shared" />
+    <EmbeddedResource Include="..\SuperHelper\Properties\Resources.resx" LogicalName="SuperHelper.Properties.Resources.resources" />
+    <EmbeddedResource Include="..\SuperHelper\Controls\SuperHelperControl.xeto" LogicalName="SuperHelper.Controls.SuperHelperControl.xeto" />
+    <EmbeddedResource Include="..\SuperHelper\Resources\SuperHelperIcon_24.png" LogicalName="SuperHelper.Resources.SuperHelperIcon_24.png" />
+    <EmbeddedResource Include="..\SuperHelper\Resources\Panels\*.svg" LogicalName="SuperHelper.Resources.Panels.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\SuperHelper\Resources\urls.rhino-cn.json" LogicalName="SuperHelper.Resources.urls.rhino-cn.json" />
+    <EmbeddedResource Include="..\urls.json" LogicalName="SuperHelper.Resources.urls.100-gh.json" />
+  </ItemGroup>
+</Project>

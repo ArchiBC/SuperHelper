@@ -1,0 +1,18 @@
+---
+name: SuperHelperGH2
+version: $version
+authors:
+- ArchiBC
+description: >
+  SuperHelper workspace for Grasshopper 2 in Rhino 9 on macOS and .NET 10.
+  Includes a Rhino viewport and command panel, component and web help,
+  examples, parameter inspection, development information, file management
+  and persistent workspace layout.
+url: https://github.com/ArchiBC/SuperHelper
+keywords:
+- grasshopper2
+- help
+- workspace
+- rhino9
+- guid:01a71230-29b2-4b47-a8f0-b141a36a7f2a
+icon: icon.png

@@ -84,6 +84,8 @@ Rhino 的停靠区 `RecalcLayout` 会重新挂载全部区块，在 Mac 上可�
 
 macOS 组件帮助通过 View → SuperHelper Component Help、F1 或工具栏右键菜单的 Help for Selected Component 打开；Auto Target 也会随选择更新。GH 自带右键 Help 保留原生行为。Mac 不执行旧的 .NET 方法内存替换。
 
+Mac 的 GH1 工具栏按钮使用 Rhino 的原生 NSSegmentedControl，不会把右键传给 WinForms MouseDown。`MacToolbarContextMenuBinding` 将共用的菜单接到按钮的原生 NSView.Menu，打开时同步各区块的勾选状态，按钮或编辑器关闭时释放。2026-10-30 冷启动后已实际验证反复右键、Command 区块隐藏及恢复；左键仍切换工作区显示。
+
 ### Mac GH 画布滚轮方向
 
 SuperHelper 的 Settings → General → GH Canvas Zoom → Reverse wheel direction 可单独反转 GH 画布的滚轮缩放。Rhino 视口方向和帮助页滚动不随此设置改变。触控板平移和惯性仍交由 GH 原生处理；反向缩放复用 GH 的 DollyZoom、鼠标锚点和缩放范围，不改 Rhino 全局 ZoomScale。
@@ -92,9 +94,9 @@ SuperHelper 的 Settings → General → GH Canvas Zoom → Reverse wheel direct
 
 2026-10-30：Apple Silicon / macOS 27.2 / Rhino 9.0.26300.9402，程序集 SHA256 `1545a73012b113952ae2be6189e377afc109b8c4316546289059339837f4aef9` 通过 24 项滚轮回归及本地 Release/Yak 内容校验。真实 ScrollWheel 输入已确认：原生设置下同一向上滚动使画布 200% → 100%，启用独立反向后使画布 100% → 193%；嵌入视口镜头与 Rhino ZoomScale 保持不变。本机启用独立反向，保留 Rhino 原有方向。物理触控板平移、惯性及捏合仍需人工验证，脚本通过不代表这些手势已验收。此构建仅安装到本机测试，没有发布发行包。
 
-### 后续 Win / GH2 接续
+### Win / GH2 接续
 
-mac 分支的起点是 `origin/develop` 的 `d97933a`。2026-10-30 检查时，远端尚无 win 分支；等待相关 GH2 适配有明确完成或可测试证据后，再接入共享改动并验证 Mac 平台。不能以分支刚出现或 WIP 提交作为完成标记，也不能将 GH1 的测试结论当作 GH2 已兼容。
+mac 分支的起点是 `origin/develop` 的 `d97933a`。2026-10-30 已接入 `origin/win` 的 `63d3070`，复用共享界面和宿主接口，并增加 GH2 的 Mac 原生输入、独立安装入口及实际界面测试。安装包和详细验证范围见 [GH2 Mac 兼容说明](../docs/gh2-mac.md)。GH1 与 GH2 的测试、方向设置和面板标识分别验证；物理触控板和可选 Hops 服务不由普通滚轮或托管测试代替。
 
 第二条脚本默认只做版本、文件哈希及 GHA 内容校验，不联系 GitHub 或 Yak。
 自动发布任务额外传入 `-Publish -CreateRelease -TargetCommit <合并提交完整 SHA>`；通过全部包检查后才创建 Release。

@@ -91,6 +91,7 @@ test_document = None
 rhino_document = Rhino.RhinoDoc.ActiveDoc
 was_modified = rhino_document.Modified
 command_check_pending = False
+hidden_gh2_editor = None
 try:
     assembly = next(a for a in System.AppDomain.CurrentDomain.GetAssemblies() if a.GetName().Name == 'SuperHelper')
     report['assembly'] = str(assembly.Location)
@@ -98,6 +99,11 @@ try:
         report['assembly_sha256'] = hashlib.sha256(stream.read()).hexdigest()
     report['tested_at'] = str(System.DateTime.Now.ToString('o'))
     report['version'] = str(assembly.GetName().Version)
+    gh2 = next((a for a in System.AppDomain.CurrentDomain.GetAssemblies() if a.GetName().Name == 'Grasshopper2'), None)
+    if gh2 is not None:
+        other_editor = gh2.GetType('Grasshopper2.UI.Editor').GetProperty('Instance', flags).GetValue(None, None)
+        if other_editor is not None and not other_editor.Visible:
+            hidden_gh2_editor = other_editor
     priority_type = assembly.GetType('SuperHelper.SuperHelperAssemblyPriority')
     menu_type = assembly.GetType('SuperHelper.MenuReplacer')
     control = menu_type.GetProperty('Control', flags).GetValue(None, None)
@@ -119,6 +125,9 @@ try:
     command = field(control, '_commandPanel')
     check('Native command mirror', field(command, '_commandMirror') is not None)
     if Rhino.Runtime.HostUtils.RunningOnOSX:
+        instance = priority_type.GetField('_instance', flags).GetValue(None)
+        bindings = field(instance, '_workspaceContextBindings')
+        check('Mac toolbar owns a native context menu binding', bindings.Count > 0)
         check('Mac integrated command focus binding', field(field(command, '_commandMirror'), '_commandInputBinding') is not None)
         call(viewport_panel, 'Activate', True)
         child = field(field(viewport_panel, '_viewport'), '_control')
@@ -165,12 +174,12 @@ try:
     check('Component Help menu exists', len(help_items) == 1)
     if help_items and not Rhino.Runtime.HostUtils.RunningOnOSX:
         help_items[0].PerformClick()
-        check('Component Help routes to SuperHelper', System.Object.ReferenceEquals(prop(control, 'CurrentObject'), obj))
+        check('Component Help routes to SuperHelper', System.Object.ReferenceEquals(prop(control, 'CurrentObject').NativeObject, obj))
     using_menu.Dispose()
     view_menu = Grasshopper.Instances.DocumentEditor.MainMenuStrip.Items[2]
     help_command = next(item for item in view_menu.DropDownItems if item.Name == 'SuperHelperObjectHelpCommand')
     help_command.PerformClick()
-    check('SuperHelper help command and F1', System.Object.ReferenceEquals(prop(control, 'CurrentObject'), obj)
+    check('SuperHelper help command and F1', System.Object.ReferenceEquals(prop(control, 'CurrentObject').NativeObject, obj)
           and str(help_command.ShortcutKeys) == 'F1')
     call(control, 'RefreshObjectData')
     check('Parameter information', field(control, '_objectInfoPanel').GetType().GetProperty('Content').GetValue(field(control, '_objectInfoPanel'), None) is not None)
@@ -208,6 +217,8 @@ try:
             created_points = [p.Id for p in rhino_document.Objects.GetObjectList(Rhino.DocObjects.ObjectType.Point) if p.Id not in points_before]
             check('Command creates the expected geometry', len(created_points) == 1 and
                   rhino_document.Objects.FindId(created_points[0]).Geometry.Location.DistanceTo(Rhino.Geometry.Point3d(12,34,56)) < 1e-6)
+            if hidden_gh2_editor is not None:
+                check('Hidden GH2 stays hidden during a GH1 command', not hidden_gh2_editor.Visible)
         except System.Exception as error:
             check('Command submission', False, error.ToString())
         except:

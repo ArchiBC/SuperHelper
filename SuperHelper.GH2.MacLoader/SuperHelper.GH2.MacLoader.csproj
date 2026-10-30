@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>2.1.2.0</Version>
+    <InformationalVersion>2.1.2</InformationalVersion>
+    <Title>SuperHelperGH2 Mac Loader</Title>
+    <TargetExt>.rhp</TargetExt>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="RhinoCommon" Version="9.0.26300.9401" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <!-- CoreCLR's executable dependency table accepts DLL extensions. The plugin is
+       compiled unchanged into an isolated test output, with its ordinary RHP kept intact. -->
+  <ItemGroup><ProjectReference Include="..\..\SuperHelper.GH2\SuperHelper.GH2.csproj" AdditionalProperties="TargetExt=.dll;OutputPath=bin/ContractTests/$(Configuration)/" /></ItemGroup>
+</Project>

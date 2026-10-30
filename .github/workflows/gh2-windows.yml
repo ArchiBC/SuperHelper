@@ -1,0 +1,67 @@
+name: GH2 compatibility
+on:
+  workflow_dispatch:
+  push:
+    branches: [win, mac]
+    paths:
+      - 'SuperHelper/**'
+      - 'SuperHelper.GH2/**'
+      - 'SuperHelper.GH2.MacLoader/**'
+      - 'build/Build-GH2.ps1'
+      - 'YAK/manifest-gh2-win.yml'
+      - 'YAK/manifest-gh2-mac.yml'
+      - 'tests/**'
+      - 'build/Test-GH2Compatibility.py'
+      - 'build/Test-GH2CanvasWheel.py'
+      - 'build/Test-GH2PointPrompt.py'
+      - '.github/workflows/gh2-windows.yml'
+  pull_request:
+    branches: [main, develop, win, mac]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build both host extensions
+        run: dotnet build SuperHelper.sln -c Release -v minimal
+      - name: Download Yak
+        shell: pwsh
+        run: |
+          $yakDirectory = Join-Path $env:RUNNER_TEMP 'yak-cli'
+          New-Item -ItemType Directory -Path $yakDirectory -Force | Out-Null
+          Invoke-WebRequest 'https://files.mcneel.com/yak/tools/0.19.1/win-x64/yak.exe' -OutFile (Join-Path $yakDirectory 'yak.exe')
+      - name: Build and verify GH2 Windows package
+        shell: pwsh
+        run: |
+          ./build/Build-GH2.ps1 -YakExecutable (Join-Path $env:RUNNER_TEMP 'yak-cli/yak.exe') -OutputRoot (Join-Path $env:RUNNER_TEMP 'superhelper-gh2')
+      - name: Build and verify GH2 Mac package
+        shell: pwsh
+        run: |
+          ./build/Build-GH2.ps1 -Platform mac -YakExecutable (Join-Path $env:RUNNER_TEMP 'yak-cli/yak.exe') -OutputRoot (Join-Path $env:RUNNER_TEMP 'superhelper-gh2-mac')
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: superhelper-gh2-packages
+          path: |
+            ${{ runner.temp }}/superhelper-gh2/package/*.yak
+            ${{ runner.temp }}/superhelper-gh2/package-result.json
+            ${{ runner.temp }}/superhelper-gh2-mac/package/*.yak
+            ${{ runner.temp }}/superhelper-gh2-mac/package-result.json
+          if-no-files-found: error
+  mac-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build GH1 and GH2 on macOS
+        run: dotnet build SuperHelper.sln -c Release -v minimal
