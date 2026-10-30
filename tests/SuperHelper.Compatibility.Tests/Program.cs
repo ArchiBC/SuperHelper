@@ -92,6 +92,25 @@ internal static class CompatibilityChecks
         Check("Wheel minimum delta saturates safely", () => (short)((SuperHelper.Gh2WindowsCanvasInput.ReverseDelta(new IntPtr(0x80000000L)).ToInt64() >> 16) & 0xffff) == short.MaxValue);
 
         Check("Mac unphased wheel is routed to native GH2 zoom", () => SuperHelper.Gh2MacCanvasInput.IsWheelZoom(0, 0));
+        var nativeZoomStep = typeof(Grasshopper2.UI.Flex.FlexControl).Assembly.GetType("Grasshopper2.UI.Flex.MouseWheelZoom")
+            .GetMethod("ZoomStep", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null,
+                new[] { typeof(float), typeof(bool), typeof(bool) }, null);
+        foreach (var naturalScroll in new[] { false, true })
+        foreach (var reverse in new[] { false, true })
+        foreach (var rhinoReverse in new[] { false, true })
+        foreach (var delta in new[] { -2f, -0.25f, 0.25f, 2f })
+        {
+            var input = new Eto.Forms.MouseEventArgs(Eto.Forms.MouseButtons.None, Eto.Forms.Keys.None,
+                new Eto.Drawing.PointF(100, 100), new Eto.Drawing.SizeF(0, delta), 0, naturalScroll);
+            var normalized = SuperHelper.Gh2MacCanvasInput.NormalizeWheel(input, reverse);
+            var nativeDelta = normalized.IsDirectionInverted ? normalized.Delta.Height : -normalized.Delta.Height;
+            var step = (float)nativeZoomStep.Invoke(null, new object[] { nativeDelta, false, rhinoReverse });
+            // GH1 DollyZoom: zoom / (0.85 ^ (delta/2)), reciprocated by Rhino's
+            // setting, with the independent preference reversing delta first.
+            var expected = Math.Sign(delta) * (reverse ? -1 : 1) * (rhinoReverse ? -1 : 1);
+            Check($"Mac GH2 matches GH1: natural={naturalScroll}, reverse={reverse}, Rhino={rhinoReverse}, delta={delta}",
+                () => Math.Sign(step) == expected && normalized.IsDirectionInverted == input.IsDirectionInverted);
+        }
         foreach (var phase in new long[] { 1, 2, 4, 8, 16, 32, 128 })
         {
             Check($"Mac gesture phase {phase} is preserved", () => !SuperHelper.Gh2MacCanvasInput.IsWheelZoom(phase, 0));

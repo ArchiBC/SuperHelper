@@ -404,13 +404,20 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		object obj = Enum.Parse(type2, "System");
 		foreach (KeyValuePair<Type, (string, string)> item in dictionary2)
 		{
+			// GH1 and GH2 keep distinct panel identities and content owners. Rhino's
+			// global panel list must distinguish the two sets by caption as well.
+#if GRASSHOPPER2
+			string caption = item.Value.Item1 + " (GH2)";
+#else
+			string caption = item.Value.Item1;
+#endif
 			if (method?.Invoke(null, new object[1] { item.Key.GUID }) == null)
 			{
 				methodInfo.Invoke(null, new object[6]
 				{
 					PlugInId,
 					item.Key,
-					item.Value.Item1,
+					caption,
 					typeof(EmbeddedRhinoWorkspace).Assembly,
 					item.Value.Item2,
 					obj

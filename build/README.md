@@ -98,6 +98,8 @@ SuperHelper 的 Settings → General → GH Canvas Zoom → Reverse wheel direct
 
 mac 分支的起点是 `origin/develop` 的 `d97933a`。2026-10-30 已接入 `origin/win` 的 `63d3070`，复用共享界面和宿主接口，并增加 GH2 的 Mac 原生输入、独立安装入口及实际界面测试。安装包和详细验证范围见 [GH2 Mac 兼容说明](../docs/gh2-mac.md)。GH1 与 GH2 的测试、方向设置和面板标识分别验证；物理触控板和可选 Hops 服务不由普通滚轮或托管测试代替。
 
+后续专项脚本：`Test-GH2WheelDirection.py` 对照 GH1 / GH2 原生方向（含自然滚动），`Test-PanelRegistration.py` 检查两套面板标题及重复注册，`Test-GH2ExampleDrag.py` 检查真鼠标拖放与取消，`Test-MacTrackpad.py` 记录真实平移、惯性和捏合，`Test-HopsCompatibility.py` 对照 GH1 / GH2 的真实 Hops HTTP 求解。本轮已修复 GH2 自然滚动方向及 Mac 异步拖放生命周期，GH2 面板标题增加 `(GH2)`。Hops 本地 Python 服务可用 `tests/hops/server.py` 复现，远程 Rhino.Compute 部署另行验证；各专项的环境、哈希和结果见兼容说明。
+
 第二条脚本默认只做版本、文件哈希及 GHA 内容校验，不联系 GitHub 或 Yak。
 自动发布任务额外传入 `-Publish -CreateRelease -TargetCommit <合并提交完整 SHA>`；通过全部包检查后才创建 Release。
 

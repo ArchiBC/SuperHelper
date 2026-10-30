@@ -141,20 +141,46 @@ internal sealed class Gh2Example : IHelpExample
     public async Task<bool> DragFrom(Control owner)
     {
         var doc = _loading == null ? null : await _loading;
-        if (_disposed || doc == null || !Mouse.Buttons.HasFlag(MouseButtons.Primary)) return false;
-        return await OnUi(() =>
+        // The card already checks MouseDown's Primary button. Querying the
+        // global physical button state here rejects valid Mac/remote input and
+        // falls back to inserting a copy even when the drag is cancelled.
+        if (_disposed || doc == null) return false;
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var token = Guid.NewGuid().ToString("N");
+        DataObject data = null;
+        EventHandler<DragEventArgs> ended = (_, _) => completion.TrySetResult(true);
+        EventHandler<EventArgs> unloaded = (_, _) => completion.TrySetResult(true);
+        try
         {
-            var token = Guid.NewGuid().ToString("N");
-            DraggedDocuments.Add(token, doc);
-            try
+            await OnUi(() =>
             {
-                using var data = new DataObject();
+                DraggedDocuments.Add(token, doc);
+                data = new DataObject();
                 data.SetString(token, DragFormat);
-                owner.DoDragDrop(data, DragEffects.Copy);
+                owner.DragEnd += ended;
+                owner.UnLoad += unloaded;
+                // Eto.Mac starts NSDraggingSession from the supplied image.
+                // Without one it creates no dragging items and no drop occurs.
+                var image = _thumbnail ?? _icon;
+                owner.DoDragDrop(data, DragEffects.Copy, image, new PointF(image.Width / 2f, image.Height / 2f));
                 return true;
-            }
-            finally { DraggedDocuments.Remove(token); }
-        });
+            });
+            // Eto's DoDragDrop starts an asynchronous native drag on Mac. Keep
+            // both payload and token alive until DragEnd, including cancellation.
+            // A cancelled drag was handled and must not fall back to inserting.
+            return await completion.Task;
+        }
+        finally
+        {
+            await OnUi(() =>
+            {
+                owner.DragEnd -= ended;
+                owner.UnLoad -= unloaded;
+                DraggedDocuments.Remove(token);
+                data?.Dispose();
+                return true;
+            });
+        }
     }
     internal static bool TryGetDragged(DataObject data, out Document document)
     {

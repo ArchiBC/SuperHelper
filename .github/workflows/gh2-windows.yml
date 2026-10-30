@@ -14,6 +14,11 @@ on:
       - 'build/Test-GH2Compatibility.py'
       - 'build/Test-GH2CanvasWheel.py'
       - 'build/Test-GH2PointPrompt.py'
+      - 'build/Test-GH2WheelDirection.py'
+      - 'build/Test-GH2ExampleDrag.py'
+      - 'build/Test-PanelRegistration.py'
+      - 'build/Test-MacTrackpad.py'
+      - 'build/Test-HopsCompatibility.py'
       - '.github/workflows/gh2-windows.yml'
   pull_request:
     branches: [main, develop, win, mac]

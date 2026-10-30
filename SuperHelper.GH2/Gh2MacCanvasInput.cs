@@ -80,9 +80,9 @@ internal sealed class Gh2MacCanvasInput : IDisposable
 
             // GH2's Mac ScrollGesture consumes mouse wheels as pan input before
             // Eto raises MouseWheel. Use GH2's existing wheel handler for discrete
-            // wheels, preserving its natural-scroll correction, Rhino preference,
+            // wheels, preserving its Rhino preference,
             // cursor anchor, zoom limits and responsive canvas objects.
-            _nativeWheel(SuperHelperPreferences.ReverseCanvasWheelZoom ? ReverseWheel(mouse) : mouse);
+            _nativeWheel(NormalizeWheel(mouse, SuperHelperPreferences.ReverseCanvasWheelZoom));
             return null;
         }
         catch (Exception exception)
@@ -93,6 +93,14 @@ internal sealed class Gh2MacCanvasInput : IDisposable
     }
 
     internal static bool IsWheelZoom(long phase, long momentum) => phase == 0 && momentum == 0;
+
+    // GH1's Mac WinForms bridge passes NSEvent.DeltaY directly into DollyZoom.
+    // GH2 additionally compensates for natural scrolling in OnMouseWheel. For
+    // inverted events that compensation makes the same GH preference zoom in
+    // opposite directions in the two editors. Cancel that extra sign while
+    // retaining the native metadata and applying our preference exactly once.
+    internal static MouseEventArgs NormalizeWheel(MouseEventArgs mouse, bool reverse) =>
+        reverse != mouse.IsDirectionInverted ? ReverseWheel(mouse) : mouse;
 
     internal static MouseEventArgs ReverseWheel(MouseEventArgs mouse) => new(mouse.Buttons, mouse.Modifiers,
         mouse.Location, new SizeF(mouse.Delta.Width, -mouse.Delta.Height), mouse.Pressure, mouse.IsDirectionInverted);
