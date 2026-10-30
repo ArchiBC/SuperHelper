@@ -1,6 +1,5 @@
 using Eto.Forms;
 using Eto.Serialization.Xaml;
-using Grasshopper.Kernel;
 using Rhino;
 using System;
 using System.Collections.Generic;
@@ -31,7 +30,7 @@ public sealed class SuperHelperControl : Panel
     private readonly FileManagerPanel _fileManagerPanel;
     private readonly SettingsPanel _settingsPanel;
     private readonly WorkspaceLayoutController _workspaceLayout;
-    private GH_DocumentObject _currentObject;
+    private HelpObject _currentObject;
     private bool _workspaceShutdown;
 
     public SuperHelperControl()
@@ -68,7 +67,7 @@ public sealed class SuperHelperControl : Panel
 
     public int SelectedTabIndex => _workspaceLayout.SelectedHelpIndex;
 
-    public GH_DocumentObject CurrentObject => _currentObject;
+    public HelpObject CurrentObject => _currentObject;
 
     public bool AutoTarget
     {
@@ -107,7 +106,7 @@ public sealed class SuperHelperControl : Panel
     }
 
     public void SetObject(
-        GH_DocumentObject obj,
+        HelpObject obj,
         string html,
         string webUrl,
         IEnumerable<string> examplePaths)
@@ -118,23 +117,40 @@ public sealed class SuperHelperControl : Panel
         }
 
         _examplesPanel.Save();
+        if (_currentObject?.ComponentGuid == obj.ComponentGuid && HelperHost.Current.Examples.Items.TryGetValue(obj.ComponentGuid.ToString(), out var savedExamples))
+            examplePaths = savedExamples;
         var componentChanged = _currentObject?.ComponentGuid != obj.ComponentGuid;
+        var previous = _currentObject;
         _currentObject = obj;
 
         RefreshObjectData();
         UpdatePageSafely(() => _originHelpPanel.SetHtml(html), "Origin Help");
         UpdatePageSafely(() => _webHelpPanel.SetObject(obj, webUrl, componentChanged), "Web Help");
         UpdatePageSafely(() => _examplesPanel.SetExamples(obj, examplePaths), "Examples");
+        if (!ReferenceEquals(previous, obj)) previous?.Dispose();
     }
 
     public void RefreshObjectData()
     {
+        HelperHost.Current.ClearHighlight();
         _objectInfoPanel.SetObject(_currentObject);
         _developmentPanel.SetObject(_currentObject);
         _examplesPanel.SetCurrentObject(_currentObject);
     }
 
     public void SaveExampleValue() => _examplesPanel.Save();
+
+    public void ClearObject()
+    {
+        _examplesPanel.Save();
+        _currentObject?.Dispose();
+        _currentObject = null;
+        HelperHost.Current.ClearHighlight();
+        RefreshObjectData();
+        _examplesPanel.SetExamples(null, Array.Empty<string>());
+        _originHelpPanel.SetHtml(string.Empty);
+        _webHelpPanel.SetObject(null, string.Empty, navigate: false);
+    }
 
     public void ResetViewport()
     {
@@ -148,7 +164,7 @@ public sealed class SuperHelperControl : Panel
 
     public void OnClosed()
     {
-        HighLightConduit.HighLightObject = null;
+        HelperHost.Current.ClearHighlight();
         RhinoDoc.ActiveDoc?.Views.Redraw();
     }
 
@@ -185,11 +201,14 @@ public sealed class SuperHelperControl : Panel
             return;
         }
         _workspaceShutdown = true;
+        _examplesPanel.Save();
         StopFeatureControls();
         _commandPanel.Shutdown();
         _viewportPanel.Shutdown();
         _examplesPanel.Shutdown();
         _workspaceLayout.Shutdown();
+        _currentObject?.Dispose();
+        _currentObject = null;
     }
 
     private void BuildHelpPages()

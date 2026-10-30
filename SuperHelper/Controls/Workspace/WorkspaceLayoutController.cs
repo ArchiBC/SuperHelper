@@ -1,5 +1,4 @@
 using Eto.Forms;
-using Grasshopper;
 using Rhino;
 using System;
 using System.Collections.Generic;
@@ -84,22 +83,22 @@ internal sealed class WorkspaceLayoutController
 
     public void UseCurrentAsDefault()
     {
-        Instances.Settings.SetValue(DefaultCommandVisibleKey, IsSectionVisible(EmbeddedWorkspaceSection.Command));
-        Instances.Settings.SetValue(DefaultViewportVisibleKey, IsSectionVisible(EmbeddedWorkspaceSection.Viewport));
-        Instances.Settings.SetValue(DefaultHelpVisibleKey, IsSectionVisible(EmbeddedWorkspaceSection.Help));
+        HelperHost.Current.Settings.SetValue(DefaultCommandVisibleKey, IsSectionVisible(EmbeddedWorkspaceSection.Command));
+        HelperHost.Current.Settings.SetValue(DefaultViewportVisibleKey, IsSectionVisible(EmbeddedWorkspaceSection.Viewport));
+        HelperHost.Current.Settings.SetValue(DefaultHelpVisibleKey, IsSectionVisible(EmbeddedWorkspaceSection.Help));
     }
 
     public void RestoreDefault()
     {
         SetSectionVisible(
             EmbeddedWorkspaceSection.Command,
-            Instances.Settings.GetValue(DefaultCommandVisibleKey, true));
+            HelperHost.Current.Settings.GetValue(DefaultCommandVisibleKey, true));
         SetSectionVisible(
             EmbeddedWorkspaceSection.Viewport,
-            Instances.Settings.GetValue(DefaultViewportVisibleKey, true));
+            HelperHost.Current.Settings.GetValue(DefaultViewportVisibleKey, true));
         SetSectionVisible(
             EmbeddedWorkspaceSection.Help,
-            Instances.Settings.GetValue(DefaultHelpVisibleKey, true));
+            HelperHost.Current.Settings.GetValue(DefaultHelpVisibleKey, true));
     }
 
     public void Shutdown()

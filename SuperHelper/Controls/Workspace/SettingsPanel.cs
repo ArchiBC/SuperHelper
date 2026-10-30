@@ -1,9 +1,6 @@
 using Eto.Drawing;
 using Eto.Forms;
-using Grasshopper.GUI.Base;
-using Grasshopper.Kernel;
 using System;
-using WinForms = System.Windows.Forms;
 
 namespace SuperHelper;
 
@@ -84,13 +81,13 @@ internal sealed class SettingsPanel : Panel
             _helpVisible);
 
         var switchSide = new Button { Height = 28 };
-        void RefreshSwitchSideText() => switchSide.Text = SuperHelperAssemblyPriority.IsSuperHelperOnRight
+        void RefreshSwitchSideText() => switchSide.Text = HelperHost.Current.DockOnRight
             ? "Move to Left"
             : "Move to Right";
         RefreshSwitchSideText();
         switchSide.Click += (_, _) =>
         {
-            SuperHelperAssemblyPriority.SwitchSide();
+            HelperHost.Current.SwitchSide();
             RefreshSwitchSideText();
         };
 
@@ -244,7 +241,7 @@ internal sealed class SettingsPanel : Panel
             value.Text = $"R {color.R}  G {color.G}  B {color.B}  A {color.A}";
         }
 
-        pickerButton.Click += (_, _) => ShowGrasshopperColorPicker(getColor(), color =>
+        pickerButton.Click += (_, _) => HelperHost.Current.ShowColorPicker(pickerButton, getColor(), color =>
         {
             setColor(color);
             Refresh(color);
@@ -262,31 +259,6 @@ internal sealed class SettingsPanel : Panel
             new TableCell(value),
             new TableCell(null, true),
             reset);
-    }
-
-    private static void ShowGrasshopperColorPicker(
-        System.Drawing.Color initialColor,
-        Action<System.Drawing.Color> colorChanged)
-    {
-        var popup = new WinForms.ToolStripDropDown
-        {
-            AutoClose = true,
-            Padding = WinForms.Padding.Empty,
-        };
-        GH_DocumentObject.ColourEventHandler handler = (_, args) =>
-        {
-            colorChanged(args.Colour);
-            if (!args.Intermediate)
-            {
-                popup.Close();
-            }
-        };
-        var picker = GH_DocumentObject.Menu_AppendColourPicker(popup, initialColor, handler);
-        picker.AllowNumericInput = true;
-        picker.ShowChannelSliders = true;
-        picker.ShowAlphaSlider = true;
-        WinFormsDropDownLifetime.DisposeOnIdleAfterClosed(popup);
-        popup.Show(WinForms.Cursor.Position);
     }
 
     private void RaiseSectionVisibility(EmbeddedWorkspaceSection section, CheckBox checkBox)

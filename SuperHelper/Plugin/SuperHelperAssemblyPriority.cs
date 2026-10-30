@@ -28,6 +28,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
 
     public override GH_LoadingInstruction PriorityLoad()
     {
+        HelperHost.Current = new Grasshopper1Host();
         _instance = this;
         SuperSetting.OpenChanged += OnOpenChanged;
         Instances.CanvasCreated += OnCanvasCreated;
@@ -81,7 +82,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
     private void OnCanvasCreated(GH_Canvas canvas)
     {
         Instances.CanvasCreated -= OnCanvasCreated;
-        _canvasInputBinding = WorkspacePlatform.Current.BindCanvasInput(canvas);
+        _canvasInputBinding = (WorkspacePlatform.Current as MacWorkspacePlatform)?.BindCanvasInput(canvas);
         if (Instances.DocumentEditor is { } editor)
         {
             InitializeEditor(editor);

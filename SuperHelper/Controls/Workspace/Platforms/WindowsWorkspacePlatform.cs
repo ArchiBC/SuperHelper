@@ -21,5 +21,4 @@ internal sealed class WindowsWorkspacePlatform : IWorkspacePlatform
             UseShellExecute = true,
         })?.Dispose();
     public IDisposable BindCommandInput(TextBox input) => null;
-    public IDisposable BindCanvasInput(Grasshopper.GUI.Canvas.GH_Canvas canvas) => null;
 }

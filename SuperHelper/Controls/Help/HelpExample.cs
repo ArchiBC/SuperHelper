@@ -16,8 +16,24 @@ using System.Windows.Forms;
 
 namespace SuperHelper
 {
-    public class HelpExample : IDisposable, INotifyPropertyChanged
+    public class HelpExample : IDisposable, INotifyPropertyChanged, IHelpExample
     {
+        private Bitmap _etoThumbnailSource;
+        private Bitmap _etoIconSource;
+        private Eto.Drawing.Image _etoThumbnail;
+        private Eto.Drawing.Image _etoIcon;
+        Eto.Drawing.Image IHelpExample.ThumbnailImage => EtoImage(Thumbnail, ref _etoThumbnailSource, ref _etoThumbnail);
+        Eto.Drawing.Image IHelpExample.IconImage => EtoImage(Icon, ref _etoIconSource, ref _etoIcon);
+        private static Eto.Drawing.Image EtoImage(Bitmap source, ref Bitmap cachedSource, ref Eto.Drawing.Image image)
+        {
+            if (!ReferenceEquals(source, cachedSource))
+            {
+                image?.Dispose();
+                image = EtoImageUtilities.FromBitmap(source);
+                cachedSource = source;
+            }
+            return image;
+        }
         private static readonly Guid HopsGuid = new Guid("C69BB52C-88BA-4640-B69F-188D111029E8");
         public class GH_CopyInteraction : GH_DragInteraction
         {
@@ -530,6 +546,8 @@ namespace SuperHelper
                 _documentTask.Dispose();
             }
             _thumbnail?.Dispose();
+            _etoThumbnail?.Dispose();
+            _etoIcon?.Dispose();
         }
     }
 }

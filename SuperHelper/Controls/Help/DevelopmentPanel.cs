@@ -1,7 +1,5 @@
 using Eto.Drawing;
 using Eto.Forms;
-using Grasshopper;
-using Grasshopper.Kernel;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -53,15 +51,15 @@ internal sealed class DevelopmentPanel : Panel
         };
     }
 
-    public void SetObject(GH_DocumentObject obj)
+    public void SetObject(HelpObject obj)
     {
         _typeInformation.Text = obj == null ? string.Empty : BuildTypeInformation(obj);
         _assemblyLocation.Text = obj == null ? string.Empty : FindAssemblyLocation(obj);
     }
 
-    private static string BuildTypeInformation(GH_DocumentObject obj)
+    private static string BuildTypeInformation(HelpObject obj)
     {
-        var type = obj.GetType();
+        var type = obj.RuntimeType ?? obj.NativeObject.GetType();
         var bases = new List<string>();
         for (var current = type; current != null && current != typeof(object); current = current.BaseType)
         {
@@ -75,13 +73,9 @@ internal sealed class DevelopmentPanel : Panel
                $"{Environment.NewLine}{Environment.NewLine}Inheritance:{Environment.NewLine}{string.Join(Environment.NewLine, bases)}";
     }
 
-    private static string FindAssemblyLocation(GH_DocumentObject obj)
+    private static string FindAssemblyLocation(HelpObject obj)
     {
-        var assembly = obj.GetType().Assembly;
-        var library = Instances.ComponentServer.Libraries.FirstOrDefault(item => item.Assembly == assembly);
-        return !string.IsNullOrWhiteSpace(library?.Location) && File.Exists(library.Location)
-            ? library.Location
-            : assembly.Location ?? string.Empty;
+        return obj.AssemblyLocation ?? string.Empty;
     }
 
     private void OpenAssemblyFolder()
