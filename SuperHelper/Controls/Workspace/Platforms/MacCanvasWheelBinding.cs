@@ -1,4 +1,5 @@
 using Grasshopper;
+using Grasshopper.GUI;
 using Grasshopper.GUI.Canvas;
 using Rhino;
 using System;
@@ -32,6 +33,10 @@ internal sealed class MacCanvasWheelBinding : IDisposable
 
     public static IDisposable TryCreate(GH_Canvas canvas)
     {
+        if (canvas == null || canvas.IsDisposed)
+        {
+            return null;
+        }
         var nativeWheel = typeof(GH_Canvas).GetMethod("Canvas_MouseWheel", BindingFlags.Instance | BindingFlags.NonPublic,
             null, new[] { typeof(object), typeof(MouseEventArgs) }, null);
         var applicationType = AppDomain.CurrentDomain.GetAssemblies()
@@ -42,7 +47,15 @@ internal sealed class MacCanvasWheelBinding : IDisposable
             RhinoApp.WriteLine("SuperHelper: this Rhino build does not support independent GH wheel zoom.");
             return null;
         }
-        return new MacCanvasWheelBinding(canvas, nativeWheel, applicationType);
+        try
+        {
+            return new MacCanvasWheelBinding(canvas, nativeWheel, applicationType);
+        }
+        catch (Exception exception)
+        {
+            RhinoApp.WriteLine("SuperHelper canvas wheel binding: " + exception.GetBaseException().Message);
+            return null;
+        }
     }
 
     private void Apply(bool reverse)
@@ -69,24 +82,39 @@ internal sealed class MacCanvasWheelBinding : IDisposable
         // Preserve GH's native trackpad panning, momentum and Control+scroll.
         // Only a wheel zoom receives the opposite delta; GH still performs
         // its own cursor anchoring, zoom limits and viewport notifications.
-        MouseEventArgs forwarded = args;
+        var pan = false;
         try
         {
-            var nativeEvent = _currentEvent.GetValue(_application);
             var gesturesPan = _trackpadGestures?.GetValue(null) is not false && Control.ModifierKeys != Keys.Control;
-            var hasGesturePhase = nativeEvent != null &&
-                (Convert.ToInt64(nativeEvent.GetType().GetProperty("Phase").GetValue(nativeEvent)) != 0 ||
-                 Convert.ToInt64(nativeEvent.GetType().GetProperty("MomentumPhase").GetValue(nativeEvent)) != 0);
-            if (!gesturesPan || !hasGesturePhase)
+            if (gesturesPan)
             {
-                forwarded = new MouseEventArgs(args.Button, args.Clicks, args.X, args.Y, -args.Delta);
+                var nativeEvent = _currentEvent.GetValue(_application);
+                var eventType = nativeEvent?.GetType();
+                // AppKit aborts the process if Phase is read from a non-scroll
+                // event, even inside a managed try/catch (e.g. scripted input).
+                if (eventType?.GetProperty("Type")?.GetValue(nativeEvent)?.ToString() == "ScrollWheel")
+                {
+                    pan = Convert.ToInt64(eventType.GetProperty("Phase").GetValue(nativeEvent)) != 0 ||
+                          Convert.ToInt64(eventType.GetProperty("MomentumPhase").GetValue(nativeEvent)) != 0;
+                }
             }
         }
         catch (Exception exception)
         {
             RhinoApp.WriteLine("SuperHelper canvas wheel: " + exception.GetBaseException().Message);
         }
-        _nativeWheel(sender, forwarded);
+        if (pan)
+        {
+            _nativeWheel(sender, args);
+            return;
+        }
+
+        // Use GH's public zoom operation directly. Its private Mac wheel
+        // handler reads CurrentEvent again and is unsafe outside scrollWheel:.
+        var reversed = new MouseEventArgs(args.Button, args.Clicks, args.X, args.Y, -args.Delta);
+        _canvas.Viewport.DollyZoom(new GH_CanvasMouseEvent(_canvas.Viewport, reversed));
+        _canvas.OnViewportChanged();
+        _canvas.Refresh();
     }
 
     private void OnCanvasDisposed(object sender, EventArgs args) => Dispose();
