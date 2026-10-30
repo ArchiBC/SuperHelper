@@ -7,6 +7,7 @@ import hashlib
 import traceback
 import System
 import Rhino
+import scriptcontext as sc
 
 clr.AddReference('Grasshopper2')
 clr.AddReference('Eto')
@@ -47,7 +48,7 @@ try:
     editor = Grasshopper2.UI.Editor.Instance
     if editor is None:
         raise Exception('Start GH2 before running this script.')
-    plugin_path = os.path.join(root, 'SuperHelper.GH2', 'bin', 'Release', 'net10.0', 'SuperHelper.GH2.rhp')
+    plugin_path = sc.sticky.get('SuperHelper.GH2.TestAssembly', os.path.join(root, 'SuperHelper.GH2', 'bin', 'Release', 'net10.0', 'SuperHelper.GH2.rhp'))
     assemblies = [item for item in System.AppDomain.CurrentDomain.GetAssemblies() if item.GetName().Name == 'SuperHelper.GH2']
     report['auto_loaded_before_test'] = bool(assemblies)
     failure = None
@@ -89,6 +90,12 @@ try:
     previous_open = open_property.GetValue(None, None)
     open_property.SetValue(None, True, None)
     check('GH2 menu entry', any(item.Text == 'SuperHelper' for item in editor.Menu.Items))
+    check('GH2 keeps the settings entry in its menu', any(item.Text == 'Open Settings'
+          for menu in editor.Menu.Items if menu.Text == 'SuperHelper' for item in menu.Items))
+    check('GH2 offers a switch to Grasshopper 1', any(item.Text == 'Switch to Grasshopper 1'
+          for menu in editor.Menu.Items if menu.Text == 'SuperHelper' for item in menu.Items))
+    check('GH2 does not add a SuperHelper toolbar button', editor.ToolBar is None
+          or not any(item.Text == 'SuperHelper' for item in editor.ToolBar.Items))
     check('Command panel exists', field(control, '_commandPanel') is not None)
     viewport = field(field(control, '_viewportPanel'), '_viewport')
     check('Embedded Rhino viewport was created', viewport is not None)

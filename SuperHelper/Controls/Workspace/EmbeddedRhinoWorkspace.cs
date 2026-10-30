@@ -26,12 +26,11 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 
 	private const BindingFlags StaticFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
-	#if GRASSHOPPER2
-	private static readonly Guid PlugInId = new("01A71230-29B2-4B47-A8F0-B141A36A7F2A");
+	internal static readonly Guid PanelOwnerId = new("89447B4B-3888-4B3F-9C83-4F3A5416CB25");
+
+#if GRASSHOPPER2
 	private static readonly Guid[] LegacyDockBarIds = [];
 #else
-	private static readonly Guid PlugInId = new Guid("B45A29B1-4343-4035-989E-044E8580D9CF");
-
 	private static readonly Guid[] LegacyDockBarIds =
 	{
 		new("37A151C8-9700-446E-B1A8-82B6BA3CEB0A"),
@@ -50,6 +49,10 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 	private readonly Guid _helpDockBarId = Guid.NewGuid();
 
 	private readonly RhinoDoc _document;
+
+	private readonly IReadOnlyDictionary<Guid, Control> _contents;
+
+	private readonly Guid _contentOwner = Guid.NewGuid();
 
 	private readonly Action<Guid> _panelActivated;
 
@@ -148,6 +151,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		_committedRightExtent = 4;
 		_committedBottomExtent = 4;
 		_document = document ?? RhinoDoc.ActiveDoc ?? throw new InvalidOperationException("Rhino has no active document.");
+		_contents = contents;
 		_panelActivated = panelActivated;
 		_rhinoUiAssembly = Assembly.Load("Rhino.UI");
 		_dockSitesType = RequireType("Rhino.UI.Internal.TabPanels.TabPanelDockSites");
@@ -157,18 +161,38 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		_collectionsType = RequireType("Rhino.UI.Internal.TabPanels.TabPanelCollections");
 		_dockSitePlacementType = RequireType("Rhino.UI.Internal.TabPanels.DockSitePlacement");
 		RemoveLegacyEmbeddedCollections();
-		EmbeddedRhinoPanelContent.Clear();
 		RegisterSuperHelperPanels();
-		EmbeddedRhinoPanelContent.Set(contents);
 		// On Mac the RhinoDoc constructor leaves the window serial at zero,
 		// so dock bars cannot resolve their placement when added to a band.
 		object dockSitesOwner = WorkspacePlatform.Current.DockSitesOwner(_rhinoUiAssembly, _document);
 		_dockSites = Activator.CreateInstance(_dockSitesType, InstanceFlags, null, new[] { dockSitesOwner }, null)
 			?? throw new InvalidOperationException("Unable to create Rhino dock sites.");
-		CreateSiteControls();
-		CreateInitialCollections();
-		AttachHelpStatePersistence();
-		BuildHost();
+		EmbeddedRhinoPanelContent.Register(_contentOwner, ResolvePanelContent);
+		try
+		{
+			CreateSiteControls();
+			CreateInitialCollections();
+			AttachHelpStatePersistence();
+			BuildHost();
+		}
+		catch
+		{
+			EmbeddedRhinoPanelContent.Unregister(_contentOwner);
+			throw;
+		}
+	}
+
+	private Control ResolvePanelContent(Guid instanceId)
+	{
+		if (_disposed) return null;
+		foreach (object collection in _ownedCollections)
+		{
+			object item = _collectionType.GetMethod("ItemFromRuntimeId", InstanceFlags,
+				null, new[] { typeof(Guid) }, null)?.Invoke(collection, new object[] { instanceId });
+			if (item?.GetType().GetProperty("Id", InstanceFlags)?.GetValue(item) is Guid id
+				&& _contents.TryGetValue(id, out Control content)) return content;
+		}
+		return null;
 	}
 
 	private void RemoveLegacyEmbeddedCollections()
@@ -388,42 +412,37 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		Type typeFromHandle9 = typeof(SuperHelperSettingsPanel);
 		dictionary[typeFromHandle9] = ("Settings", "SuperHelper.Resources.Panels.Settings.svg");
 		Dictionary<Type, (string, string)> dictionary2 = dictionary;
-		Assembly assembly = typeof(Panels).Assembly;
-		Type type = assembly.GetType("Rhino.UI.PanelSystem", throwOnError: true);
-		Type type2 = assembly.GetType("Rhino.UI.PanelType", throwOnError: true);
-		MethodInfo methodInfo = type.GetMethod("Register", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[6]
-		{
-			typeof(Guid),
-			typeof(Type),
-			typeof(string),
-			typeof(Assembly),
-			typeof(string),
-			type2
-		}, null) ?? throw new MissingMethodException(type.FullName, "Register");
-		MethodInfo method = type.GetMethod("Definition", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new Type[1] { typeof(Guid) }, null);
-		object obj = Enum.Parse(type2, "System");
+		Rhino.PlugIns.PlugIn owner = EnsurePanelOwner();
 		foreach (KeyValuePair<Type, (string, string)> item in dictionary2)
 		{
-			// GH1 and GH2 keep distinct panel identities and content owners. Rhino's
-			// global panel list must distinguish the two sets by caption as well.
-#if GRASSHOPPER2
-			string caption = item.Value.Item1 + " (GH2)";
-#else
-			string caption = item.Value.Item1;
-#endif
-			if (method?.Invoke(null, new object[1] { item.Key.GUID }) == null)
+			Panels.RegisterPanel(owner, item.Key, item.Value.Item1,
+				typeof(EmbeddedRhinoWorkspace).Assembly, item.Value.Item2, PanelType.System);
+		}
+	}
+
+	private static Rhino.PlugIns.PlugIn EnsurePanelOwner()
+	{
+		// A GH2 Framework.Plugin is not a Rhino PlugIn. Its extension GUID
+		// cannot own Rhino dock bars: Rhino reports incorrect unload at exit.
+		var owner = Rhino.PlugIns.PlugIn.Find(PanelOwnerId);
+		if (owner == null && Rhino.PlugIns.PlugIn.GetPlugInInfo(PanelOwnerId) != null)
+		{
+			Rhino.PlugIns.PlugIn.LoadPlugIn(PanelOwnerId);
+			owner = Rhino.PlugIns.PlugIn.Find(PanelOwnerId);
+		}
+		if (owner == null)
+		{
+			string folder = System.IO.Path.GetDirectoryName(typeof(EmbeddedRhinoWorkspace).Assembly.Location);
+			foreach (string candidate in new[] { folder, System.IO.Path.GetDirectoryName(folder) })
 			{
-				methodInfo.Invoke(null, new object[6]
-				{
-					PlugInId,
-					item.Key,
-					caption,
-					typeof(EmbeddedRhinoWorkspace).Assembly,
-					item.Value.Item2,
-					obj
-				});
+				string path = System.IO.Path.Combine(candidate, "SuperHelper.GH2.Loader.rhp");
+				if (!System.IO.File.Exists(path)) continue;
+				Rhino.PlugIns.PlugIn.LoadPlugIn(path, out _);
+				owner = Rhino.PlugIns.PlugIn.Find(PanelOwnerId);
+				if (owner != null) break;
 			}
 		}
+		return owner ?? throw new InvalidOperationException("Load the SuperHelperR9 package, including its shared Rhino loader, before opening the workspace.");
 	}
 
 	private void CreateSiteControls()
@@ -937,9 +956,10 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 			Panel contentPanel = collectionControl?.GetType().GetProperty(
 				"ContentPanel",
 				InstanceFlags)?.GetValue(collectionControl) as Panel;
-			if (contentPanel?.Content is SuperHelperRhinoPanel panel)
+			if (contentPanel?.Content is Panel panel && EmbeddedRhinoPanelIds.All.Contains(panel.GetType().GUID))
 			{
-				panel.FitToContainer(contentPanel.ClientSize);
+				// The shared definition may have been registered by the other host.
+				SuperHelperRhinoPanel.FitToContainer(panel, contentPanel.ClientSize);
 			}
 		}
 	}
@@ -1305,6 +1325,7 @@ internal sealed class EmbeddedRhinoWorkspace : IDisposable
 		}
 		finally
 		{
+			EmbeddedRhinoPanelContent.Unregister(_contentOwner);
 			_ownedCollections.Clear();
 			// TabPanelDockSites.Dispose broadcasts a window-wide disposal. On
 			// Windows our private sites share serial 0 with Rhino's main window;

@@ -10,14 +10,14 @@ using System.Runtime.InteropServices;
 [assembly: PlugInDescription(DescriptionType.Email, "Archi-bc@outlook.com")]
 [assembly: PlugInDescription(DescriptionType.WebSite, "https://github.com/ArchiBC/SuperHelper")]
 
-namespace SuperHelper.GH2.MacLoader;
+namespace SuperHelper.GH2.Loader;
 
 /// <summary>
-/// RhinoMac scans package RHPs before GH2's assembly resolver is available.
+/// Rhino scans package RHPs before GH2's assembly resolver is available.
 /// Keep this entry point independent of GH2 and load the nested extension after
-/// the user opens GH2. The Windows package uses GH2's usual package discovery.
+/// the user opens GH2. This entry point is shared by Windows and macOS.
 /// </summary>
-public sealed class MacGh2Loader : PlugIn
+public sealed class Gh2Loader : PlugIn
 {
     private Assembly _grasshopper;
 
@@ -66,5 +66,22 @@ public sealed class MacGh2Loader : PlugIn
         AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoaded;
     }
 
-    protected override void OnShutdown() => StopWatching();
+    protected override void OnShutdown()
+    {
+        StopWatching();
+        // Retire both workspaces before Rhino releases this native panel owner.
+        foreach (var name in new[] { "SuperHelper", "SuperHelper.GH2" })
+        {
+            try
+            {
+                var assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(item => item.GetName().Name == name);
+                var type = assembly?.GetType(name == "SuperHelper" ? "SuperHelper.SuperHelperAssemblyPriority" : "SuperHelper.SuperHelperGh2Plugin");
+                type?.GetMethod("ShutdownWorkspace", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
+            }
+            catch (Exception exception)
+            {
+                RhinoApp.WriteLine("SuperHelper shutdown: " + exception.GetBaseException().Message);
+            }
+        }
+    }
 }

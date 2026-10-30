@@ -15,6 +15,7 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
     private const string ToolbarButtonDescription = "SuperHelper workspace";
     private const string ViewMenuCommandName = "SuperHelperWorkspaceCommand";
     private const string ObjectHelpCommandName = "SuperHelperObjectHelpCommand";
+    private const string SwitchHostCommandName = "SuperHelperSwitchToGH2";
     private static readonly Lazy<GrasshopperPanelHost> PanelHostFactory =
         new(() => new GrasshopperPanelHost(MenuReplacer.Control));
     private static SuperHelperAssemblyPriority _instance;
@@ -33,7 +34,16 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
         _instance = this;
         SuperSetting.OpenChanged += OnOpenChanged;
         Instances.CanvasCreated += OnCanvasCreated;
+        Rhino.RhinoApp.Closing += OnRhinoClosing;
         return GH_LoadingInstruction.Proceed;
+    }
+
+    private static void OnRhinoClosing(object sender, EventArgs args) => ShutdownWorkspace();
+
+    public static void ShutdownWorkspace()
+    {
+        Rhino.RhinoApp.Closing -= OnRhinoClosing;
+        if (PanelHostFactory.IsValueCreated) MenuReplacer.Control.ShutdownWorkspace();
     }
 
     public static int SuperHelperPanelWidth
@@ -236,6 +246,18 @@ public sealed class SuperHelperAssemblyPriority : GH_AssemblyPriority
             help.Click += (_, _) => MenuReplacer.ShowSelectedObjectHelp();
             viewMenu.DropDownItems.Insert(viewMenu.DropDownItems.IndexOf(command) + 1, help);
         }
+        if (!viewMenu.DropDownItems.OfType<ToolStripMenuItem>().Any(item => item.Name == SwitchHostCommandName))
+        {
+            var switchHost = new ToolStripMenuItem("Switch to Grasshopper 2") { Name = SwitchHostCommandName };
+            switchHost.Click += (_, _) => SwitchToGrasshopper2();
+            viewMenu.DropDownItems.Add(switchHost);
+        }
+    }
+
+    private void SwitchToGrasshopper2()
+    {
+        if (Rhino.RhinoApp.RunScript("_GH2", false) && _editor?.IsDisposed == false)
+            _editor.Hide();
     }
 
     private static void WorkspaceCommandClick(object sender, EventArgs e) =>

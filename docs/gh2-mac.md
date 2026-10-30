@@ -2,7 +2,7 @@
 
 `mac` 从 `origin/develop` 的 `d97933a` 开始，接入 Windows GH2 提交 `63d3070`。
 需要 Rhino 9 / GH2 `9.0.26300.9401` 或更新版本，以及 .NET 10。
-GH1 的 `SuperHelper.gha` 与 GH2 的 `SuperHelper.GH2.rhp` 独立加载，设置目录、画布方向和面板 GUID 分别保存。
+GH1 的 `SuperHelper.gha` 与 GH2 的 `SuperHelper.GH2.rhp` 独立加载，设置目录和画布方向分别保存，Rhino 面板注册共用一套。
 
 ## Mac 接入
 
@@ -10,11 +10,13 @@ GH1 的 `SuperHelper.gha` 与 GH2 的 `SuperHelper.GH2.rhp` 独立加载，设�
 - GH2 的 Mac ScrollGesture 会将普通鼠标滚轮当作平移。Mac 本地滚轮绑定只处理 GH2 窗口内、画布范围中的无 phase / momentum 纵向滚轮，并交给 GH2 自带的缩放处理器；设置可独立反向。事件的坐标、修饰键、自然滚动标志及缩放边界由原生处理器保留。
 - GH1 的 Mac WinForms 桥直接使用 NSEvent 的纵向增量，GH2 原生滚轮处理器还会按自然滚动标志补偿一次方向。绑定在自然滚动事件中抵消这次额外补偿，使相同 Rhino 设置和 SuperHelper 设置下，GH1 / GH2 的鼠标滚轮方向一致；自然滚动标志本身保留。
 - 高精度鼠标也可能报告 precise deltas，不能以该标志判断触控板。带 phase 的平移、惯性和捏合继续走 GH2 自身的输入路径。访问 NSEvent.Phase 前必须先确认事件类型为 ScrollWheel。
-- RhinoMac 会在 GH2 启动前扫描包顶层的 RHP，此时直接扫描 GH2 扩展会因缺少 Grasshopper2.dll 报初始化失败。Mac 包顶层提供只引用 RhinoCommon 的 `SuperHelper.GH2.MacLoader.rhp`，在用户启动 GH2、编辑器创建后加载 `gh2/SuperHelper.GH2.rhp`。不会在 Rhino 启动时自动打开 GH2，也不随包分发宿主 SDK。Windows 包继续使用原来的顶层 GH2 RHP。
+- Rhino 会在 GH2 启动前扫描包顶层的 RHP，此时直接扫描 GH2 扩展会因缺少 Grasshopper2.dll 报初始化失败。现用同一个 `SuperHelperR9` 通用包：顶层提供只引用 RhinoCommon 的 `SuperHelper.GH2.Loader.rhp` 和 GH1 的 `SuperHelper.gha`，用户打开 GH2 后才加载 `gh2/SuperHelper.GH2.rhp`。Windows / macOS 共用此流程，不自动打开 GH2，不随包分发宿主 SDK。
 - 隐藏的 GH2 不会因 GH1 或 Rhino 的取点命令自动弹回前台；只有 GH2 自己安排的 getter 能恢复隐藏窗口。
 - 示例复制和插入会临时选择整个源文档，并恢复每个对象原有的选择状态。未保存选中状态的示例也能完整插入，GH2 负责重映射标识、连接及撤销记录。
 - Eto 在 Mac 上异步完成原生拖放。示例的 token 和 DataObject 保留到 DragEnd；源控件卸载时也清理，取消后不会回退为直接插入。拖动提供缩略图或图标，确保 Eto.Mac 创建实际的 NSDraggingItem。入口采用卡片 MouseDown 的按钮状态，避免全局物理按钮状态与事件不一致时误插入。
-- Rhino 面板列表中的两套面板分别属于 GH1 和 GH2，保留独立 GUID、布局和内容归属。GH2 的九项标题增加 ` (GH2)`，重复注册仍按 GUID 去重。
+- Rhino 面板列表只注册九个共用定义，沿用 GH1 GUID 和名称。各工作区通过面板实例标识绑定自身内容，任一宿主先加载都可复用同一套注册；旧 GH2 布局自动迁移 GUID。GH2 不再新增顶部工具栏，保留 SuperHelper 菜单中的 Open Settings。
+- GH1 的 View → Switch to Grasshopper 2 和 GH2 的 SuperHelper → Switch to Grasshopper 1 调用目标宿主原生打开命令，成功后隐藏来源编辑器，保留各自文档和工作区开关设置。
+- 九个共用面板通过公共 `Rhino.UI.Panels.RegisterPanel` 注册到真实的通用 Rhino 加载器；退出时先释放两宿主私有容器，再卸载所有者，避免把 GH2 扩展 ID 当成 Rhino 插件 ID 引起清理弹窗。此逻辑没有新增系统分支。
 
 ## 构建与安装
 
@@ -22,14 +24,17 @@ GH1 的 `SuperHelper.gha` 与 GH2 的 `SuperHelper.GH2.rhp` 独立加载，设�
 
 ```powershell
 dotnet build ./SuperHelper.sln -c Release
-./build/Build-GH2.ps1 -Platform mac
+./build/Build-GH2.ps1
 ```
 
-输出 `artifacts/gh2-mac-…/package/superhelpergh2-…-rh9_0-mac.yak`。脚本核对包内 RHP 与本次构建的哈希，并拒绝捆绑宿主 DLL 或 GH1 扩展；不安装或发布。
+输出单个 `artifacts/all-hosts-…/package/superhelperr9-…-rh9_0-any.yak`，同时支持 GH1 / GH2 和 Windows / macOS。脚本核对两个宿主实现与加载器的版本、SDK 和哈希，拒绝捆绑宿主 DLL；不安装或发布。旧 `-Platform mac/win` 参数只保留调用兼容，仍输出同一个通用包。
 
-使用 Rhino 包管理器或自带 `yak install <包路径>` 本地安装后重启 Rhino，再运行 `GH2`，工作区会自动加载。开发时也可以先启动 GH2，再通过 `GH2Plugins` → Install 选择 `SuperHelper.GH2/bin/Release/net10.0/SuperHelper.GH2.rhp`。
+使用 Rhino 包管理器或自带 `yak install <包路径>` 本地安装后重启 Rhino，再运行 `Grasshopper` 或 `GH2`，相应工作区会自动加载。
+此前安装过独立 `SuperHelperGH2` 测试包的机器，应先在包管理器中卸载该旧包，只保留新的 `SuperHelperR9` 统一包，避免重复注册同一个加载器。设置目录不随此步骤清除，旧 GH2 布局会迁移到共用 GUID。
 
 ## 已验证与待验证
+
+以下实机记录对应 `mac` 的 `da8decf` 及更早实现。之后在 `win` 的公共代码中调整了面板共用、菜单切换、GH2 工具栏及退出清理，并合成全宿主通用包。统一包已通过 Windows 冷启动及退出测试，详见 [Windows 验证](gh2-windows.md)；新的 Mac 原生回归尚未执行，不能将下面的旧版结果当作统一包验收。
 
 2026-10-30 实机：Apple Silicon、macOS 27.2、Rhino 9.0.26300.9402、Rhino 自带 .NET 10.0.2。
 本轮 GH2 实现 SHA256 为 `e7766532f2d8b408d335fcbc3b3b76f237d22e9cc2dc1509149a9ec07ebe0db5`，仅安装到本机，未发布。先前滚轮和取点报告的实现 SHA256 为 `3284d1da5896347b499f4a35eed45832136a6b7e04f473e3eaf763be81200ebc`。
@@ -45,7 +50,7 @@ dotnet build ./SuperHelper.sln -c Release
 | GH1 DollyZoom 与 GH2 原生滚轮处理器方向对照 | 17 项通过 | `build/Test-GH2WheelDirection.py` → `artifacts/gh2-wheel-direction.json` |
 | GH2 真触控板横纵平移、惯性、双向捏合及镜头保持 | 8 项通过，记录 354 个原生事件 | `build/Test-MacTrackpad.py` → `artifacts/gh2-native-trackpad.json` |
 | GH1 真触控板对照及镜头保持 | 8 项通过，记录 393 个原生事件 | `build/Test-MacTrackpad.py` → `artifacts/gh1-native-trackpad.json` |
-| 两套 Rhino 面板标题区分、各重复注册五次 | 5 项通过 | `build/Test-PanelRegistration.py` → `artifacts/panel-registration.json` |
+| 原双套面板标题区分、各重复注册五次 | 旧版 5 项通过；现已改为九个共用定义，需重跑新版脚本 | `build/Test-PanelRegistration.py` → `artifacts/panel-registration.json` |
 | 真鼠标示例拖放、连线、源选择及撤销重做；原生 Esc 取消 | 7 项落点检查、5 项独立取消检查通过 | `build/Test-GH2ExampleDrag.py`；`artifacts/gh2-example-drag.json`、`artifacts/gh2-example-drag-cancel.json` |
 | GH1 Hops、GH2 互操作包装及 SuperHelper 插入后真实 HTTP 求解 | 12 项通过，两个宿主均得到 43，撤销重做通过 | `build/Test-HopsCompatibility.py` → `artifacts/hops-compatibility.json` |
 

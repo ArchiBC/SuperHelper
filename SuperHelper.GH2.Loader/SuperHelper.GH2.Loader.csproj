@@ -3,7 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Version>2.1.2.0</Version>
     <InformationalVersion>2.1.2</InformationalVersion>
-    <Title>SuperHelperGH2 Mac Loader</Title>
+    <Title>SuperHelperR9</Title>
     <TargetExt>.rhp</TargetExt>
     <EnableDynamicLoading>true</EnableDynamicLoading>
   </PropertyGroup>

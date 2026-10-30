@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json;
+using System.Security.Cryptography;
 
 var repository = Path.GetFullPath(args.Length > 0 ? args[0] : Path.Combine(AppContext.BaseDirectory, "../../../../../"));
 var rhino = args.Length > 1 ? args[1] : OperatingSystem.IsMacOS() ? "/Applications/Rhino 9.app" : @"C:\Program Files\Rhino 9";
@@ -18,10 +19,11 @@ AssemblyLoadContext.Default.Resolving += (_, name) =>
         }
     return null;
 };
-return Run(repository, gh2Folder);
+var gh1Path = args.Length > 2 ? Path.GetFullPath(args[2]) : Path.Combine(repository, "SuperHelper/bin/Release/net10.0/SuperHelper.gha");
+return Run(repository, gh2Folder, gh1Path);
 
 [MethodImpl(MethodImplOptions.NoInlining)]
-static int Run(string repository, string gh2Folder) => CompatibilityChecks.Run(repository, gh2Folder);
+static int Run(string repository, string gh2Folder, string gh1Path) => CompatibilityChecks.Run(repository, gh2Folder, gh1Path);
 
 internal static class CompatibilityChecks
 {
@@ -43,7 +45,7 @@ internal static class CompatibilityChecks
             Console.WriteLine($"FAIL {name}: {exception.GetBaseException().Message}");
         }
     }
-    public static int Run(string repository, string gh2Folder)
+    public static int Run(string repository, string gh2Folder, string gh1Path)
     {
         var assembly = typeof(SuperHelper.SuperHelperGh2Plugin).Assembly;
         Check("GH2 has no compile-time GH1 dependency", () => !assembly.GetReferencedAssemblies().Any(name => name.Name is "Grasshopper" or "GH_IO" or "SuperHelper"));
@@ -54,12 +56,54 @@ internal static class CompatibilityChecks
         Check("Shared icons are embedded", () => resources.Count(name => name.StartsWith("SuperHelper.Resources.Panels.") && name.EndsWith(".svg")) == 9);
         Check("Web mappings are embedded", () => resources.Contains("SuperHelper.Resources.urls.rhino-cn.json") && resources.Contains("SuperHelper.Resources.urls.100-gh.json"));
 
-        var gh1Path = Path.Combine(repository, "SuperHelper/bin/Release/net10.0/SuperHelper.gha");
         var gh1 = AssemblyLoadContext.Default.LoadFromAssemblyPath(gh1Path);
         var names = new[] { "Command", "Viewport", "OriginHelp", "WebHelp", "Example", "ParamsHelp", "DevelopmentHelp", "FileManager", "Settings" };
         var gh2Ids = names.Select(name => assembly.GetType("SuperHelper.SuperHelper" + name + "Panel", true).GUID).ToArray();
         var gh1Ids = names.Select(name => gh1.GetType("SuperHelper.SuperHelper" + name + "Panel", true).GUID).ToArray();
-        Check("GH1 and GH2 panel GUIDs are disjoint", () => gh2Ids.Distinct().Count() == 9 && !gh2Ids.Intersect(gh1Ids).Any());
+        Check("GH1 and GH2 share the same nine panel GUIDs", () => gh2Ids.Distinct().Count() == 9 && gh2Ids.SequenceEqual(gh1Ids));
+        var loaderPath = Path.Combine(Path.GetDirectoryName(gh1Path)!, "SuperHelper.GH2.Loader.rhp");
+        if (!File.Exists(loaderPath)) loaderPath = Path.Combine(repository, "SuperHelper.GH2.Loader/bin/Release/net10.0/SuperHelper.GH2.Loader.rhp");
+        var loader = AssemblyLoadContext.Default.LoadFromAssemblyPath(loaderPath);
+        Check("One native Rhino plugin owns the shared panels for both hosts", () =>
+            loader.GetCustomAttribute<System.Runtime.InteropServices.GuidAttribute>()?.Value.Equals(SuperHelper.EmbeddedRhinoWorkspace.PanelOwnerId.ToString(), StringComparison.OrdinalIgnoreCase) == true
+            && (Guid)gh1.GetType("SuperHelper.EmbeddedRhinoWorkspace", true).GetField("PanelOwnerId", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null) == SuperHelper.EmbeddedRhinoWorkspace.PanelOwnerId
+            && loader.GetExportedTypes().Any(type => type.IsSubclassOf(typeof(Rhino.PlugIns.PlugIn))));
+        Check("The shared loader has no GH or platform-specific UI dependency", () => !loader.GetReferencedAssemblies().Any(name =>
+            name.Name is "Grasshopper" or "Grasshopper2" or "GH_IO" or "System.Windows.Forms" or "Eto.Wpf" or "Eto.Mac"));
+        Check("Both hosts accept Rhino's panel instance identity", () => new[] { assembly, gh1 }.All(hostAssembly =>
+            names.All(name => hostAssembly.GetType("SuperHelper.SuperHelper" + name + "Panel", true)
+                .GetConstructor(new[] { typeof(Guid), typeof(Rhino.RhinoDoc) }) != null)));
+        Check("Panel content routing is shared across host assemblies and removes only its owner", () =>
+        {
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+            var router = gh1.GetType("SuperHelper.EmbeddedRhinoPanelContent", true);
+            var owner1 = Guid.NewGuid();
+            var owner2 = Guid.NewGuid();
+            var instance = Guid.NewGuid();
+            var calls1 = new List<Guid>();
+            var calls2 = new List<Guid>();
+            Func<Guid, Eto.Forms.Control> first = id => { calls1.Add(id); return null; };
+            Func<Guid, Eto.Forms.Control> second = id => { calls2.Add(id); return null; };
+            try
+            {
+                router.GetMethod("Register", flags).Invoke(null, new object[] { owner1, first });
+                SuperHelper.EmbeddedRhinoPanelContent.Register(owner2, second);
+                SuperHelper.EmbeddedRhinoPanelContent.Resolve(instance);
+                var shared = calls1.SequenceEqual(new[] { instance }) && calls2.SequenceEqual(new[] { instance });
+                SuperHelper.EmbeddedRhinoPanelContent.Unregister(owner1);
+                router.GetMethod("Resolve", flags).Invoke(null, new object[] { instance });
+                return shared && calls1.Count == 1 && calls2.Count == 2;
+            }
+            finally
+            {
+                SuperHelper.EmbeddedRhinoPanelContent.Unregister(owner1);
+                SuperHelper.EmbeddedRhinoPanelContent.Unregister(owner2);
+            }
+        });
+        var legacyIds = new[] { "183C0C9C-016D-5884-8C82-22F5ECB176E6", "54F3A81B-FE33-520B-B476-C4DAFEBD3452",
+            "15E91135-82E3-5C27-8997-FC619DB74A47", "5CBB1042-9563-571E-BDC1-F9165A6D08B6", "55ABE78C-A081-51EF-8653-C5868CDF5C69",
+            "4E764549-7A72-54C3-B7AF-260DE03DB1D7", "4EFE29A5-406B-5797-B9E2-2F8E83479B33", "58CC29E4-EC7E-590E-854A-B488ED3E99B2", "7669AB5C-3D32-5771-9646-B32218C0DDD4" }.Select(Guid.Parse).ToArray();
+        Check("All former GH2 panel identities migrate to the shared definitions", () => legacyIds.Select(SuperHelper.EmbeddedRhinoPanelIds.Normalize).SequenceEqual(gh1Ids));
         var requiredVersion = assembly.GetReferencedAssemblies().Single(name => name.Name == "Grasshopper2").Version;
         var hostVersion = AssemblyName.GetAssemblyName(Path.Combine(gh2Folder, "Grasshopper2.dll")).Version;
         Check($"Host SDK {hostVersion} supports extension SDK {requiredVersion}",
@@ -148,6 +192,16 @@ internal static class CompatibilityChecks
         Check("Saved mappings are persisted in the host directory", () => File.Exists(Path.Combine(scratch, "SuperHelper/urls.official.json")));
         var state = new SuperHelper.HelpWorkspaceState { PanelIds = gh2Ids.ToList(), SelectedPanelId = gh2Ids[4] };
         Check("Workspace layout saves and restores order and selection", () => SuperHelper.HelpWorkspaceStateStore.TrySave(state) && SuperHelper.HelpWorkspaceStateStore.Load().PanelIds.SequenceEqual(gh2Ids) && SuperHelper.HelpWorkspaceStateStore.Load().SelectedPanelId == gh2Ids[4]);
+        var externalPanel = Guid.NewGuid();
+        host.Settings.SetValue("SuperHelper.HelpWorkspaceState", JsonSerializer.Serialize(new SuperHelper.HelpWorkspaceState
+        {
+            PanelIds = new() { legacyIds[8], externalPanel, legacyIds[4], gh2Ids[4] }, SelectedPanelId = legacyIds[8],
+        }));
+        Check("Saved GH2 layouts migrate order and selection while preserving other Rhino panels", () =>
+        {
+            var migrated = SuperHelper.HelpWorkspaceStateStore.Load();
+            return migrated.PanelIds.SequenceEqual(new[] { gh2Ids[8], externalPanel, gh2Ids[4] }) && migrated.SelectedPanelId == gh2Ids[8];
+        });
         SuperHelper.SuperSetting.Open = false;
         var count = 0;
         SuperHelper.SuperSetting.OpenChanged += _ => count++;
@@ -155,7 +209,9 @@ internal static class CompatibilityChecks
         SuperHelper.SuperSetting.Open = true;
         SuperHelper.SuperSetting.Open = false;
         Check("Workspace visibility emits only actual state changes", () => count == 2 && !SuperHelper.SuperSetting.Open);
-        var report = new { scope = "Managed contracts and installed SDK signatures; no Rhino GUI execution", passed = _failed == 0, checks = Checks, pending = new[] { "GH2 editor and viewport rendering", "Native document migration, solution, drag/drop and undo", "Hops integration", "GH1 and GH2 coexistence in Rhino" } };
+        var report = new { scope = "Managed contracts and installed SDK signatures; no Rhino GUI execution", testedAt = DateTimeOffset.Now,
+            assemblies = new[] { assembly, gh1 }.Select(item => new { path = item.Location, sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(item.Location))) }),
+            passed = _failed == 0, checks = Checks, pending = new[] { "GH2 editor and viewport rendering", "Native document migration, solution, drag/drop and undo", "Hops integration", "GH1 and GH2 coexistence in Rhino" } };
         File.WriteAllText(Path.Combine(repository, "artifacts/gh2-contract-checks.json"), JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"{Checks.Count - _failed}/{Checks.Count} managed checks passed; Rhino GUI validation remains pending.");
         return _failed == 0 ? 0 : 1;

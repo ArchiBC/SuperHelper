@@ -8,6 +8,9 @@ on:
       - '.github/workflows/yak.yml'
       - 'build/**'
       - 'SuperHelper/**'
+      - 'SuperHelper.GH2/**'
+      - 'SuperHelper.GH2.Loader/**'
+      - 'SuperHelper.sln'
       - 'YAK/manifest-rh9.yml'
       - 'LICENSE'
   pull_request:
@@ -98,9 +101,9 @@ jobs:
           }
       - name: Verify macOS Release build
         run: |
-          dotnet restore SuperHelper/SuperHelper.csproj --source 'https://api.nuget.org/v3/index.json'
+          dotnet restore SuperHelper.sln --source 'https://api.nuget.org/v3/index.json'
           if ($LASTEXITCODE -ne 0) { throw 'macOS NuGet restore failed.' }
-          dotnet build SuperHelper/SuperHelper.csproj -c Release --no-restore -v minimal
+          dotnet build SuperHelper.sln -c Release --no-restore -v minimal
           if ($LASTEXITCODE -ne 0) { throw 'macOS Release build failed.' }
   publish:
     if: >-

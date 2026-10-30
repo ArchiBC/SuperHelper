@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SuperHelper", "SuperHelper\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SuperHelper.GH2", "SuperHelper.GH2\SuperHelper.GH2.csproj", "{1D2DA414-CC52-4B2D-8760-BDD7D39C3319}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SuperHelper.GH2.MacLoader", "SuperHelper.GH2.MacLoader\SuperHelper.GH2.MacLoader.csproj", "{EDCA8A51-5AE7-4802-9E69-B4C33AFCD507}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SuperHelper.GH2.Loader", "SuperHelper.GH2.Loader\SuperHelper.GH2.Loader.csproj", "{EDCA8A51-5AE7-4802-9E69-B4C33AFCD507}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

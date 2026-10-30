@@ -11,6 +11,11 @@ public sealed class SuperHelperGh2Plugin : Plugin
     public override string Name => "SuperHelperGH2";
     public override string Author => "ArchiBC";
     public override string Contact => "Archi-bc@outlook.com";
+    public static void ShutdownWorkspace()
+    {
+        _workspace?.Dispose();
+        _workspace = null;
+    }
     public override void OnLoaded()
     {
         base.OnLoaded();

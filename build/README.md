@@ -25,12 +25,14 @@
 发版必须通过 `develop → main` PR 合并。直接推送到 `main` 只会构建，不会发版。
 构建和发布都固定到该 PR 的合并提交 SHA，后续分支移动不会改变发布内容。
 
-支持 net10.0、版本一致的正式 RhinoCommon/Grasshopper 9.x，生成 Windows / macOS 通用的 `rh9_0-any` 分发包。发布前必须通过 Windows 打包校验和 macOS Release 构建。
+支持 net10.0、版本一致的正式 RhinoCommon / Grasshopper / Grasshopper2 9.x，只生成一个 `SuperHelperR9` 的 `rh9_0-any` 包，同时支持 GH1 / GH2 和 Windows / macOS。发布前必须通过 Windows 打包校验和三个项目的 macOS Release 构建。
+
+包顶层包含 GH1 的 `SuperHelper.gha` 和公共 `SuperHelper.GH2.Loader.rhp`，GH2 实现在 `gh2/SuperHelper.GH2.rhp`。加载器只依赖 RhinoCommon，待用户打开 GH2 后加载其实现，不在 Rhino 启动时打开 GH2。两宿主使用同一套九个 Rhino 面板定义，由真实的 Rhino 加载器通过公共 Panels API 注册；设置和文档仍各自保存，菜单可往返切换。关闭 Rhino 前清理两宿主私有容器，不能把 GH2 扩展 ID 当作 Rhino 面板的插件所有者。
 
 ## 发版步骤
 
 1. 在 `develop` 完成改动和必要的 Rhino 9 实机回归。
-2. 同时更新 `SuperHelper/SuperHelper.csproj` 的 `Version` 和 `SuperHelperInfo.cs` 的 GH AssemblyInfo 版本。
+2. 同步三个项目的 `Version`：`SuperHelper`、`SuperHelper.GH2`、`SuperHelper.GH2.Loader`，并保持 GH AssemblyInfo 版本一致。
 3. 推送 `develop`，确认构建通过。
 4. 创建并合并 `develop → main` PR。工作流自动读取产品版本，例如 `2.1.1.0` 对应标签 `v2.1.1`。
 5. 检查 Actions 的 package / publish 结果、GitHub Release 附件与公共 Yak 源。
@@ -49,7 +51,7 @@ $yakOutputRoot = Join-Path $PWD.Path ('artifacts/yak-' + [DateTime]::Now.ToStrin
 ./build/Build-Yak.ps1 -RepositoryRoot $PWD.Path `
   -YakExecutable 'C:\Program Files\Rhino 9\System\yak.exe' `
   -OutputRoot $yakOutputRoot
-./build/Publish-Yak.ps1 -PackageDirectory $yakOutputRoot -ReleaseTag v2.1.1
+./build/Publish-Yak.ps1 -PackageDirectory $yakOutputRoot -ReleaseTag v2.1.2
 ```
 
 macOS 使用 Rhino 自带的 Yak，其他参数相同：
@@ -96,9 +98,12 @@ SuperHelper 的 Settings → General → GH Canvas Zoom → Reverse wheel direct
 
 ### Win / GH2 接续
 
-mac 分支的起点是 `origin/develop` 的 `d97933a`。2026-10-30 已接入 `origin/win` 的 `63d3070`，复用共享界面和宿主接口，并增加 GH2 的 Mac 原生输入、独立安装入口及实际界面测试。安装包和详细验证范围见 [GH2 Mac 兼容说明](../docs/gh2-mac.md)。GH1 与 GH2 的测试、方向设置和面板标识分别验证；物理触控板和可选 Hops 服务不由普通滚轮或托管测试代替。
+mac 分支的起点是 `origin/develop` 的 `d97933a`。2026-10-30 已接入 `origin/win` 的 `63d3070`，复用共享界面和宿主接口，并增加 GH2 的 Mac 原生输入、独立安装入口及实际界面测试。`win` 现已同步 `mac` 的 `da8decf` 并调整共用面板及菜单切换。安装包和详细验证范围见 [GH2 Mac 兼容说明](../docs/gh2-mac.md) 和 [GH2 Windows 验证](../docs/gh2-windows.md)。GH1 与 GH2 共用九个面板定义，测试和方向设置仍分别验证；物理触控板和可选 Hops 服务不由普通滚轮或托管测试代替。
 
-后续专项脚本：`Test-GH2WheelDirection.py` 对照 GH1 / GH2 原生方向（含自然滚动），`Test-PanelRegistration.py` 检查两套面板标题及重复注册，`Test-GH2ExampleDrag.py` 检查真鼠标拖放与取消，`Test-MacTrackpad.py` 记录真实平移、惯性和捏合，`Test-HopsCompatibility.py` 对照 GH1 / GH2 的真实 Hops HTTP 求解。本轮已修复 GH2 自然滚动方向及 Mac 异步拖放生命周期，GH2 面板标题增加 `(GH2)`。Hops 本地 Python 服务可用 `tests/hops/server.py` 复现，远程 Rhino.Compute 部署另行验证；各专项的环境、哈希和结果见兼容说明。
+当前两种兼容工作流都校验单个全宿主通用包；`Build-GH2.ps1` 只是 `Build-Yak.ps1` 的兼容入口。原先独立 GH2 的 win/mac manifest 已移除，发布前校验同时检查 GH1、GH2 和加载器三个文件的哈希，不能误发仅有 GH1 的包。统一包在 Windows 已通过两种宿主打开顺序的冷启动、菜单切换、原生所有者归属、主动清理和直接退出测试；Mac 统一包实机验收仍待补齐。
+2026-10-30 用户确认 Windows 验证无问题，授权将默认全宿主、全平台通用包作为 `2.1.2` 发布；Mac 新包未重跑的实机专项仍保留原始验证状态，Windows 打包和 macOS 编译门禁照常执行。
+
+后续专项脚本：`Test-GH2WheelDirection.py` 对照 GH1 / GH2 原生方向（含自然滚动），`Test-PanelRegistration.py` 检查九个共用定义、重复注册及工作区内容归属，`Test-HostSwitching.py` 检查菜单入口、往返切换、文档及开关设置保留，`Test-GH2ExampleDrag.py` 检查真鼠标拖放与取消，`Test-MacTrackpad.py` 记录真实平移、惯性和捏合，`Test-HopsCompatibility.py` 对照 GH1 / GH2 的真实 Hops HTTP 求解。GH2 自然滚动方向及 Mac 异步拖放生命周期沿用 Mac 分支修复，面板标题不再增加 `(GH2)`。Hops 本地 Python 服务可用 `tests/hops/server.py` 复现，远程 Rhino.Compute 部署另行验证；各专项的环境、哈希和结果见兼容说明。
 
 第二条脚本默认只做版本、文件哈希及 GHA 内容校验，不联系 GitHub 或 Yak。
 自动发布任务额外传入 `-Publish -CreateRelease -TargetCommit <合并提交完整 SHA>`；通过全部包检查后才创建 Release。

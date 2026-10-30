@@ -23,7 +23,6 @@ internal sealed class Gh2Workspace : IDisposable
     private SuperHelperControl _control;
     private ButtonMenuItem _menu;
     private CheckMenuItem _toggle;
-    private ButtonToolItem _button;
     private bool _disposed;
     private IDisposable _canvasInput;
     private bool _helpPending;
@@ -104,6 +103,7 @@ internal sealed class Gh2Workspace : IDisposable
         _menu.Items.Add(_toggle);
         AddMenu("Help for Selected Component", ShowSelectedHelp);
         AddMenu("Open Settings", () => Run(control => control.OpenWorkspaceSettings()));
+        AddMenu("Switch to Grasshopper 1", SwitchToGrasshopper1);
         _menu.Items.Add(new SeparatorMenuItem());
         foreach (var section in Enum.GetValues<EmbeddedWorkspaceSection>())
         {
@@ -117,14 +117,6 @@ internal sealed class Gh2Workspace : IDisposable
         AddMenu("Restore Built-in Workspace", () => Run(control => control.RestoreBuiltInWorkspace()));
         editor.Menu ??= new MenuBar();
         editor.Menu.Items.Add(_menu);
-        _button = new ButtonToolItem
-        {
-            Text = "SuperHelper", ToolTip = "Show or hide the SuperHelper GH2 workspace",
-            Image = EtoImageUtilities.FromBitmap(Properties.Resources.SuperHelperIcon_24),
-        };
-        _button.Click += (_, _) => SuperSetting.Open = !SuperSetting.Open;
-        editor.ToolBar ??= new ToolBar();
-        editor.ToolBar.Items.Add(_button);
     }
 
     private void AddMenu(string text, Action action)
@@ -132,6 +124,11 @@ internal sealed class Gh2Workspace : IDisposable
         var item = new ButtonMenuItem { Text = text };
         item.Click += (_, _) => action();
         _menu.Items.Add(item);
+    }
+    private void SwitchToGrasshopper1()
+    {
+        if (RhinoApp.RunScript("_Grasshopper", false) && _editor?.IsDisposed == false)
+            _editor.Visible = false;
     }
     private void Run(Action<SuperHelperControl> action)
     {
@@ -340,14 +337,11 @@ internal sealed class Gh2Workspace : IDisposable
             {
                 _editor.Content = _originalContent;
                 if (_menu != null) _editor.Menu?.Items.Remove(_menu);
-                if (_button != null) _editor.ToolBar?.Items.Remove(_button);
             }
         }
         _control?.Dispose();
         _splitter?.Dispose();
         _menu?.Dispose();
-        _button?.Image?.Dispose();
-        _button?.Dispose();
         _control = null; _splitter = null; _originalContent = null; _editor = null; _canvas = null;
         _appliedOpen = null;
         _panelWidth = 0;

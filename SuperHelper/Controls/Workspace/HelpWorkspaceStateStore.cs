@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 namespace SuperHelper;
@@ -25,7 +26,10 @@ internal static class HelpWorkspaceStateStore
 				return new HelpWorkspaceState();
 			}
 
-			return JsonSerializer.Deserialize<HelpWorkspaceState>(json) ?? new HelpWorkspaceState();
+			var state = JsonSerializer.Deserialize<HelpWorkspaceState>(json) ?? new HelpWorkspaceState();
+			state.PanelIds = (state.PanelIds ?? new()).Select(EmbeddedRhinoPanelIds.Normalize).Distinct().ToList();
+			state.SelectedPanelId = EmbeddedRhinoPanelIds.Normalize(state.SelectedPanelId);
+			return state;
 		}
 		catch (Exception)
 		{
